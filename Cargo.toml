@@ -1,0 +1,2 @@
+[workspace]
+members = ["cardano-types"]
