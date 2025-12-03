@@ -1,2 +1,3 @@
 [workspace]
-members = ["cardano-types"]
+members = ["cardano-types", "yubikey-piv"]
+resolver = "3"

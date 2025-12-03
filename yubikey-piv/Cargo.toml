@@ -1,0 +1,13 @@
+[package]
+name = "yubikey-piv"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ed25519-dalek = "2.2.0"
+env_logger = "0.11.8"
+hex = "0.4.3"
+log = "0.4.28"
+yubikey = { git = "https://github.com/mproofs/yubikey.rs", branch = "curve_25519", features = [
+  "untested",
+] }
