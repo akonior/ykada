@@ -2,7 +2,7 @@ use std::convert::TryInto;
 
 use log::info;
 use yubikey::piv::{AlgorithmId, SlotId, import_cv_key, sign_data};
-use yubikey::{MgmKey, PinPolicy, TouchPolicy, YubiKey};
+use yubikey::{Context, MgmKey, PinPolicy, TouchPolicy, YubiKey};
 
 use ed25519_dalek::{SecretKey, Signature, SigningKey, VerifyingKey};
 
@@ -14,8 +14,21 @@ pub fn initialize_logger() {
     info!("logger initialized");
 }
 
+pub fn find_first_yubikey() -> YubiKey {
+    let mut readers = Context::open().unwrap();
+    for reader in readers.iter().unwrap() {
+        if let Ok(yk_found) = reader.open() {
+            println!("Connected to reader: {:?}", reader.name());
+            println!("YubiKey ATR: {:?}", yk_found);
+
+            return yk_found;
+        }
+    }
+    panic!("No YubiKey found");
+}
+
 pub fn initialize_yubikey() -> VerifyingKey {
-    let mut yubikey = YubiKey::open().unwrap();
+    let mut yubikey = find_first_yubikey();
 
     println!("YubiKey: {:?}", yubikey);
 
@@ -44,7 +57,7 @@ pub fn initialize_yubikey() -> VerifyingKey {
 }
 
 pub fn sign_raw_data(data: &[u8]) -> Signature {
-    let mut yubikey = YubiKey::open().unwrap();
+    let mut yubikey = find_first_yubikey();
 
     yubikey.verify_pin(DEFAULT_PIN).unwrap();
     println!("PIN verified");
