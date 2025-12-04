@@ -1,7 +1,7 @@
 use std::convert::TryInto;
 
 use ed25519_dalek::pkcs8::DecodePrivateKey;
-use log::info;
+use tracing::debug;
 use yubikey::piv::{AlgorithmId, SlotId, import_cv_key, sign_data};
 use yubikey::{Context, MgmKey, PinPolicy, TouchPolicy, YubiKey};
 
@@ -9,11 +9,6 @@ use ed25519_dalek::{SecretKey, Signature, SigningKey, VerifyingKey};
 
 const DEFAULT_PIN: &[u8] = b"123456";
 const DEFAULT_SECRET_KEY: &SecretKey = &[0u8; 32];
-
-pub fn initialize_logger() {
-    env_logger::init();
-    info!("logger initialized");
-}
 
 pub fn find_first_yubikey() -> YubiKey {
     let mut readers = Context::open().unwrap();
@@ -36,13 +31,13 @@ pub fn initialize_yubikey() -> VerifyingKey {
 pub fn load_sk_to_yubikey(sk: SigningKey) -> VerifyingKey {
     let mut yubikey = find_first_yubikey();
 
-    // println!("YubiKey: {:?}", yubikey);
+    debug!("YubiKey: {:?}", yubikey);
 
     yubikey
         .authenticate(&MgmKey::get_default(&yubikey).unwrap())
         .unwrap();
 
-    // println!("Signing key: {:?}", sk);
+    debug!("Signing key: {:?}", sk);
 
     let key_data = sk.as_bytes();
 
@@ -55,7 +50,6 @@ pub fn load_sk_to_yubikey(sk: SigningKey) -> VerifyingKey {
         PinPolicy::Always,
     )
     .unwrap();
-    // println!("Result of import_ecc_key: {:?}", result);
 
     sk.verifying_key()
 }
@@ -64,13 +58,13 @@ pub fn sign_raw_data(data: &[u8]) -> Signature {
     let mut yubikey = find_first_yubikey();
 
     yubikey.verify_pin(DEFAULT_PIN).unwrap();
-    // println!("PIN verified");
+    debug!("PIN verified");
 
     let signature_yubikey: Vec<u8> =
         sign_data(&mut yubikey, data, AlgorithmId::Ed25519, SlotId::Signature)
             .unwrap()
             .to_vec();
-    // println!("Result of sign_data: {:?}", signature_yubikey);
+    debug!("Result of sign_data: {:?}", signature_yubikey);
 
     let sig_bytes: [u8; Signature::BYTE_SIZE] = signature_yubikey[..]
         .try_into()
@@ -84,15 +78,15 @@ pub fn load_der_to_yubikey(_der: &[u8]) {
     let signing_key =
         SigningKey::from_pkcs8_der(_der).expect("Failed to parse DER as Ed25519 private key");
 
-    // println!("Imported private key from DER: {:?}", signing_key);
+    debug!("Imported private key from DER: {:?}", signing_key);
 
     load_sk_to_yubikey(signing_key);
 
-    // println!("Loaded private key to YubiKey");
+    debug!("Loaded private key to YubiKey");
 }
 
 pub fn sign_bin_data(buf: &[u8]) -> [u8; Signature::BYTE_SIZE] {
     let signature = sign_raw_data(buf);
-    // println!("Signed data: {:?}", signature);
+    debug!("Signed data: {:?}", signature);
     signature.to_bytes()
 }

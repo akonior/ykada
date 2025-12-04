@@ -1,10 +1,15 @@
 use clap::{Parser, Subcommand};
+use clap_verbosity_flag::{Verbosity, WarnLevel};
 use std::io::{self, Read, Write};
+use tracing::error;
 
 #[derive(Parser, Debug)]
 #[command(name = "yksign")]
 #[command(about = "YubiKey signing tool", version)]
 pub struct Cli {
+    #[command(flatten)]
+    pub verbosity: Verbosity<WarnLevel>,
+
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -16,10 +21,16 @@ pub enum Commands {
 
     /// Sign data provided via stdin
     Sign,
+
+    Info,
 }
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+
+    tracing_subscriber::fmt()
+        .with_max_level(cli.verbosity)
+        .init();
 
     match cli.command {
         Commands::LoadKey => {
@@ -37,6 +48,9 @@ fn main() -> anyhow::Result<()> {
             let signature = yubikey_piv::sign_bin_data(&data);
             // println!("Signature: {:?}", signature);
             std::io::stdout().write_all(&signature)?;
+        }
+        Commands::Info => {
+            error!("Not implemented");
         }
     }
 

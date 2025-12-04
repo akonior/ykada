@@ -6,10 +6,17 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.100"
 clap = { version = "4.5.53", features = ["derive"] }
+clap-verbosity-flag = { version = "3.0.4", default-features = false, features = [
+  "tracing",
+] }
+
 ed25519-dalek = { version = "2.2.0", features = ["pkcs8"] }
 env_logger = "0.11.8"
 hex = "0.4.3"
-log = "0.4.28"
 yubikey = { git = "https://github.com/mproofs/yubikey.rs", branch = "curve_25519", features = [
   "untested",
 ] }
+
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3" }
