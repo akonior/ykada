@@ -4,15 +4,17 @@ use log::info;
 use yubikey::piv::{AlgorithmId, SlotId, import_cv_key, sign_data};
 use yubikey::{MgmKey, PinPolicy, TouchPolicy, YubiKey};
 
-use ed25519_dalek::{Signature, SigningKey};
+use ed25519_dalek::{SecretKey, Signature, SigningKey, VerifyingKey};
 
 const DEFAULT_PIN: &[u8] = b"123456";
+const DEFAULT_SECRET_KEY: &SecretKey = &[0u8; 32];
 
-pub fn sign_raw_data() {
-    println!("import_keys binary initialized");
+pub fn initialize_logger() {
     env_logger::init();
-    info!("import_key binary initialized");
+    info!("logger initialized");
+}
 
+pub fn initialize_yubikey() -> VerifyingKey {
     let mut yubikey = YubiKey::open().unwrap();
 
     println!("YubiKey: {:?}", yubikey);
@@ -21,7 +23,7 @@ pub fn sign_raw_data() {
         .authenticate(&MgmKey::get_default(&yubikey).unwrap())
         .unwrap();
 
-    let sk = SigningKey::from_bytes(&[0u8; 32]);
+    let sk = SigningKey::from_bytes(DEFAULT_SECRET_KEY);
 
     println!("Signing key: {:?}", sk);
 
@@ -34,28 +36,30 @@ pub fn sign_raw_data() {
         key_data,
         TouchPolicy::Never,
         PinPolicy::Always,
-    );
+    )
+    .unwrap();
     println!("Result of import_ecc_key: {:?}", result);
+
+    sk.verifying_key()
+}
+
+pub fn sign_raw_data(data: &[u8]) -> Signature {
+    let mut yubikey = YubiKey::open().unwrap();
 
     yubikey.verify_pin(DEFAULT_PIN).unwrap();
     println!("PIN verified");
 
-    let signature_result = sign_data(
-        &mut yubikey,
-        &[0, 1, 2, 3, 4, 5, 6, 7, 8],
-        AlgorithmId::Ed25519,
-        SlotId::Signature,
-    )
-    .unwrap();
-    println!("Result of sign_data: {:?}", signature_result);
+    let signature_yubikey: Vec<u8> =
+        sign_data(&mut yubikey, data, AlgorithmId::Ed25519, SlotId::Signature)
+            .unwrap()
+            .to_vec();
+    println!("Result of sign_data: {:?}", signature_yubikey);
 
-    let sig_bytes: [u8; 64] = signature_result[..]
+    let sig_bytes: [u8; Signature::BYTE_SIZE] = signature_yubikey[..]
         .try_into()
         .expect("signature must be 64 bytes");
-    let signature = Signature::from_bytes(&sig_bytes);
 
-    sk.verify(&[0, 1, 2, 3, 4, 5, 6, 7, 8], &signature).unwrap();
-    println!("Signature verified");
+    sig_bytes.into()
 }
 
 #[cfg(test)]
