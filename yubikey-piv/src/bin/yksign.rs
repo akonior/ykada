@@ -26,7 +26,6 @@ fn main() -> anyhow::Result<()> {
             // read DER from stdin
             let mut buf = Vec::new();
             io::stdin().read_to_end(&mut buf)?;
-            println!("Loading priv key to yubikey");
             yubikey_piv::load_der_to_yubikey(&buf);
         }
 

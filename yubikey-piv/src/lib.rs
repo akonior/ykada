@@ -36,17 +36,17 @@ pub fn initialize_yubikey() -> VerifyingKey {
 pub fn load_sk_to_yubikey(sk: SigningKey) -> VerifyingKey {
     let mut yubikey = find_first_yubikey();
 
-    println!("YubiKey: {:?}", yubikey);
+    // println!("YubiKey: {:?}", yubikey);
 
     yubikey
         .authenticate(&MgmKey::get_default(&yubikey).unwrap())
         .unwrap();
 
-    println!("Signing key: {:?}", sk);
+    // println!("Signing key: {:?}", sk);
 
     let key_data = sk.as_bytes();
 
-    let result = import_cv_key(
+    import_cv_key(
         &mut yubikey,
         SlotId::Signature,
         AlgorithmId::Ed25519,
@@ -55,7 +55,7 @@ pub fn load_sk_to_yubikey(sk: SigningKey) -> VerifyingKey {
         PinPolicy::Always,
     )
     .unwrap();
-    println!("Result of import_ecc_key: {:?}", result);
+    // println!("Result of import_ecc_key: {:?}", result);
 
     sk.verifying_key()
 }
@@ -84,11 +84,11 @@ pub fn load_der_to_yubikey(_der: &[u8]) {
     let signing_key =
         SigningKey::from_pkcs8_der(_der).expect("Failed to parse DER as Ed25519 private key");
 
-    println!("Imported private key from DER: {:?}", signing_key);
+    // println!("Imported private key from DER: {:?}", signing_key);
 
     load_sk_to_yubikey(signing_key);
 
-    println!("Loaded private key to YubiKey");
+    // println!("Loaded private key to YubiKey");
 }
 
 pub fn sign_bin_data(buf: &[u8]) -> [u8; Signature::BYTE_SIZE] {
