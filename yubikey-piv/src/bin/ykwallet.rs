@@ -4,8 +4,8 @@ use std::io::{self, Read, Write};
 use tracing::error;
 
 #[derive(Parser, Debug)]
-#[command(name = "yksign")]
-#[command(about = "YubiKey signing tool", version)]
+#[command(name = "ykwallet")]
+#[command(about = "YubiKey Cardano wallet", version)]
 pub struct Cli {
     #[command(flatten)]
     pub verbosity: Verbosity<WarnLevel>,

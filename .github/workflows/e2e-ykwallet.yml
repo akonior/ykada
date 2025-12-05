@@ -1,4 +1,4 @@
-name: e2e-yksign
+name: e2e-ykwallet
 
 on:
   push:
@@ -15,7 +15,6 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Run e2e yksign test
+      - name: Run e2e ykwallet test
         run: |
-          scripts/e2e_yksign.sh
-          
+          scripts/e2e_ykwallet.sh
