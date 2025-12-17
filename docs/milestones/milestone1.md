@@ -28,12 +28,13 @@
     - [Signing Workflow](#signing-workflow)
     - [6.2 EdDSA and Ed25519](#62-eddsa-and-ed25519)
     - [YubiKey Firmware Support](#yubikey-firmware-support)
-  - [7. OpenPGP Module Alternative](#7-openpgp-module-alternative)
+  - [7. Proof of Concept: ykada Tool](#7-proof-of-concept-ykada-tool)
+  - [8. OpenPGP Module Alternative](#8-openpgp-module-alternative)
     - [OpenPGP EdDSA Support](#openpgp-eddsa-support)
     - [OpenPGP Limitations](#openpgp-limitations)
     - [Direct APDU Access](#direct-apdu-access)
     - [Proof of Concept](#proof-of-concept)
-  - [8. References](#8-references)
+  - [9. References](#9-references)
     - [Official YubiKey Documentation](#official-yubikey-documentation)
     - [Standards and Specifications](#standards-and-specifications)
     - [Related Projects](#related-projects)
@@ -280,8 +281,10 @@ ykman piv info
 
 - **Repository**: https://github.com/iqlusioninc/yubikey.rs
 - **Purpose**: Safe Rust bindings for YubiKey PIV
-- **Key feature**: Provides [`sign_data`](https://docs.rs/yubikey/latest/yubikey/piv/fn.sign_data.html) function that enables signing of raw data without automatic hashing
-- **Cardano relevance**: This is crucial for Cardano transaction signing, where we need to hash the transaction ourselves using Blake2b-256 and then sign the pre-hashed data directly, rather than relying on the PIV hash algorithms
+- **Key features**:
+  - Provides [`sign_data`](https://docs.rs/yubikey/latest/yubikey/piv/fn.sign_data.html) to sign raw data without automatic hashing. This is crucial for Cardano transaction signing, since the transaction is hashed externally (using Blake2b-256) and the pre-hashed data is signed directly.
+  - Allows importing Ed25519/ECC private keys into PIV slots using [`import_ecc_key`](https://docs.rs/yubikey/latest/yubikey/piv/fn.import_ecc_key.html), so you can load externally generated keys onto the device.
+  - Supports configuration of PIN and touch policies when importing a key, letting you control whether user PIN or touch is required for signing operations from Rust.
 
 ---
 
@@ -411,9 +414,56 @@ ykman piv info
 - PIV Ed25519 algorithm support
 - Sufficient slot availability (e.g., slot 0x9C)
 
+## 7. Proof of Concept: ykada Tool
+
+The **ykada** tool demonstrates the complete workflow of importing an Ed25519 key into a YubiKey PIV slot and signing data using the Rust `yubikey` crate.
+
+**Complete workflow:**
+
+1. **Generate Ed25519 key pair:**
+
+```bash
+# Generate private key in DER format
+openssl genpkey -algorithm ed25519 -outform DER -out sk.der
+
+# Extract public key
+openssl pkey -in sk.der -pubout -out pk.pem
+```
+
+2. **Load private key to YubiKey:**
+
+```bash
+# Import key into PIV slot using ykada
+cat sk.der | cargo run --bin ykada load-key -v
+```
+
+3. **Sign data:**
+
+```bash
+# Create test data
+echo "data to sign" > data.txt
+
+# Sign with YubiKey
+cat data.txt | cargo run --bin ykada sign > sig.bin
+```
+
+4. **Verify signature:**
+
+```bash
+# Verify signature with OpenSSL
+openssl pkeyutl -verify -pubin -inkey pk.pem -in data.txt -sigfile sig.bin
+# Output: Signature Verified Successfully
+```
+
+**Key points:**
+- The private key is imported into YubiKey PIV slot 0x9C (Digital Signature)
+- The `sign_data` function from `yubikey` crate signs raw data directly
+- The signature can be verified using standard OpenSSL tools
+- This demonstrates the foundation for Cardano transaction signing
+
 ---
 
-## 7. OpenPGP Module Alternative
+## 8. OpenPGP Module Alternative
 
 ### OpenPGP EdDSA Support
 
@@ -505,7 +555,7 @@ A3 78 05 76 35 38 E5 EB 75 E6 5D 3D 1C 66 AE 07 .x.v58..u.]=.f..
 
 ---
 
-## 8. References
+## 9. References
 
 ### Official YubiKey Documentation
 

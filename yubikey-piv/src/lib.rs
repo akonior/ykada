@@ -1,7 +1,7 @@
 use std::convert::TryInto;
 
 use ed25519_dalek::pkcs8::DecodePrivateKey;
-use tracing::debug;
+use tracing::{debug, info};
 use yubikey::piv::{AlgorithmId, SlotId, import_cv_key, sign_data};
 use yubikey::{Context, MgmKey, PinPolicy, TouchPolicy, YubiKey};
 
@@ -50,6 +50,8 @@ pub fn load_sk_to_yubikey(sk: SigningKey) -> VerifyingKey {
         PinPolicy::Always,
     )
     .unwrap();
+
+    info!("Imported private key to YubiKey");
 
     sk.verifying_key()
 }
