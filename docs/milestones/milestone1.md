@@ -280,6 +280,8 @@ ykman piv info
 
 - **Repository**: https://github.com/iqlusioninc/yubikey.rs
 - **Purpose**: Safe Rust bindings for YubiKey PIV
+- **Key feature**: Provides [`sign_data`](https://docs.rs/yubikey/latest/yubikey/piv/fn.sign_data.html) function that enables signing of raw data without automatic hashing
+- **Cardano relevance**: This is crucial for Cardano transaction signing, where we need to hash the transaction ourselves using Blake2b-256 and then sign the pre-hashed data directly, rather than relying on the PIV hash algorithms
 
 ---
 
