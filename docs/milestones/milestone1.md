@@ -285,6 +285,8 @@ ykman piv info
 
 ## 5. PIV Commands for Cardano
 
+YubiKey PIV supports many other commands for key management, certificate operations, PIN/PUK management, and more. For a complete list of available actions, see: https://developers.yubico.com/yubico-piv-tool/Actions/
+
 For Cardano transaction signing, two PIV commands are essential:
 
 ### Import Asymmetric Key
@@ -338,14 +340,14 @@ yubico-piv-tool -a import-key \
 - **Output**: 64-byte signature (R || S)
 - **Format**: Raw Ed25519 signature
 
+**Important limitation**:
+The `yubico-piv-tool` CLI automatically hashes the input data before signing. The default hash algorithm is SHA256, and it does not support Blake2b-256 which is used in Cardano. This means **it's not possible to sign Cardano transactions using this CLI tool directly**. However, the PIV libraries (especially the Rust one) provide lower-level access that allows signing pre-hashed data, making them suitable for Cardano transaction signing.
+
 **Example workflow:**
 
 ```bash
-# Calculate transaction hash
-HASH=$(cardano-cli transaction hash --tx-file tx.raw)
-
 # Sign with YubiKey
-echo -n "$HASH" | xxd -r -p | \
+echo -n "some data to sign" | \
   yubico-piv-tool -a verify-pin --pin 123456 --sign -s 9c -A ED25519
 ```
 
