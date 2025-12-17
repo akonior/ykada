@@ -1,8 +1,7 @@
-name: e2e-ykwallet
+name: e2e-ykada
 
 on:
   push:
-
 
 jobs:
   e2e-test:
@@ -15,6 +14,6 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Run e2e ykwallet test
+      - name: Run e2e ykada test
         run: |
-          scripts/e2e_ykwallet.sh
+          scripts/e2e_ykada.sh

@@ -4,7 +4,7 @@ use std::io::{self, Read, Write};
 use tracing::error;
 
 #[derive(Parser, Debug)]
-#[command(name = "ykwallet")]
+#[command(name = "ykada")]
 #[command(about = "YubiKey Cardano wallet", version)]
 pub struct Cli {
     #[command(flatten)]

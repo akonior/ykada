@@ -17,9 +17,9 @@ ok() {
   echo -e "${GREEN}✔ $1${NC}"
 }
 
-step "Building ykwallet in release mode"
-cargo build --bin ykwallet --release
-ok "ykwallet built successfully"
+step "Building ykada in release mode"
+cargo build --bin ykada --release
+ok "ykada built successfully"
 
 step "Generating Ed25519 keys using OpenSSL (sk.pem, pk.pem, sk.der)"
 openssl genpkey -algorithm ed25519 -out "$TMPDIR"/sk.pem
@@ -28,9 +28,9 @@ openssl pkey -in "$TMPDIR"/sk.pem -outform DER -out "$TMPDIR"/sk.der
 
 ok "Ed25519 keys generated successfully by OpenSSL"
 
-RELEASE_BIN="target/release/ykwallet"
+RELEASE_BIN="target/release/ykada"
 if [[ ! -x "$RELEASE_BIN" ]]; then
-  echo "ERROR: ykwallet binary not found at $RELEASE_BIN" >&2
+  echo "ERROR: ykada binary not found at $RELEASE_BIN" >&2
   exit 1
 fi
 
@@ -42,7 +42,7 @@ step "Preparing example message to sign"
 echo "hello yubikey" > "$TMPDIR"/msg.bin
 ok "Example message prepared successfully"
 
-step "Signing message using ykwallet"
+step "Signing message using ykada"
 cat "$TMPDIR"/msg.bin | "$RELEASE_BIN" sign > "$TMPDIR"/sig.bin
 ok "Message signed successfully"
 
