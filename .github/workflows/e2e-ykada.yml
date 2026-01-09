@@ -2,6 +2,8 @@ name: e2e-ykada
 
 on:
   push:
+    branches:
+      - main
 
 jobs:
   e2e-test:
