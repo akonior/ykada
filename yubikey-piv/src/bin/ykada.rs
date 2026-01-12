@@ -22,6 +22,9 @@ pub enum Commands {
     /// Sign data provided via stdin
     Sign,
 
+    /// Generate a new keypair on the YubiKey
+    Generate,
+
     Info,
 }
 
@@ -49,10 +52,32 @@ fn main() -> anyhow::Result<()> {
             // println!("Signature: {:?}", signature);
             std::io::stdout().write_all(&signature)?;
         }
+        Commands::Generate => {
+            todo!();
+        }
         Commands::Info => {
             error!("Not implemented");
         }
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use assert_cmd::Command;
+
+    #[test]
+    fn test_cli_version_parameter() {
+        let mut cmd = Command::cargo_bin("ykada").unwrap();
+        let assert = cmd.arg("--version").assert();
+        assert.success();
+    }
+
+    #[test]
+    fn test_cli_generate_parameter() {
+        let mut cmd = Command::cargo_bin("ykada").unwrap();
+        let assert = cmd.arg("generate").assert();
+        assert.success();
+    }
 }

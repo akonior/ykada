@@ -20,3 +20,6 @@ yubikey = { git = "https://github.com/mproofs/yubikey.rs", branch = "curve_25519
 
 tracing = "0.1"
 tracing-subscriber = { version = "0.3" }
+
+[dev-dependencies]
+assert_cmd = "=2.0.17"
