@@ -7,6 +7,8 @@ use yubikey::{Context, MgmKey, PinPolicy, TouchPolicy, YubiKey};
 
 use ed25519_dalek::{SecretKey, Signature, SigningKey, VerifyingKey};
 
+pub mod api;
+
 const DEFAULT_PIN: &[u8] = b"123456";
 const DEFAULT_SECRET_KEY: &SecretKey = &[0u8; 32];
 
