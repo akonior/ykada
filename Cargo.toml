@@ -3,22 +3,41 @@ name = "ykada"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
-anyhow = "1.0.100"
-clap = { version = "4.5.53", features = ["derive"] }
-clap-verbosity-flag = { version = "3.0.4", default-features = false, features = [
-  "tracing",
-] }
+# Feature Flags:
+# - `cli` (default): Includes the command-line interface binary
+#
+# Usage:
+# - As a library only: `ykada = { version = "0.1", default-features = false }`
+# - With CLI (default): `ykada = "0.1"`
+# - Install CLI tool: `cargo install ykada`
 
+[features]
+default = ["cli"]
+cli = ["dep:clap", "dep:clap-verbosity-flag", "dep:tracing-subscriber"]
+
+[[bin]]
+name = "ykada"
+required-features = ["cli"]
+
+[dependencies]
+# Core library dependencies (always included)
+anyhow = "1.0.100"
 ed25519-dalek = { version = "2.2.0", features = ["pkcs8"] }
-env_logger = "0.11.8"
 hex = "0.4.3"
+tracing = "0.1"
 yubikey = { git = "https://github.com/mproofs/yubikey.rs", branch = "curve_25519", features = [
   "untested",
 ] }
 
-tracing = "0.1"
-tracing-subscriber = { version = "0.3" }
+# CLI dependencies (optional, only with "cli" feature)
+clap = { version = "4.5.53", features = ["derive"], optional = true }
+clap-verbosity-flag = { version = "3.0.4", default-features = false, features = [
+  "tracing",
+], optional = true }
+tracing-subscriber = { version = "0.3", optional = true }
+
+# Development/testing only
+env_logger = "0.11.8"
 
 [dev-dependencies]
 assert_cmd = "=2.0.17"
