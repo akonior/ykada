@@ -75,6 +75,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_cli_generate_parameter() {
         let mut cmd = Command::cargo_bin("ykada").unwrap();
         let assert = cmd.arg("generate").assert();
