@@ -2,12 +2,17 @@ use std::convert::TryInto;
 
 use ed25519_dalek::pkcs8::DecodePrivateKey;
 use tracing::{debug, info};
-use yubikey::piv::{AlgorithmId, SlotId, import_cv_key, sign_data};
+use yubikey::piv::{import_cv_key, sign_data, AlgorithmId, SlotId};
 use yubikey::{Context, MgmKey, PinPolicy, TouchPolicy, YubiKey};
 
 use ed25519_dalek::{SecretKey, Signature, SigningKey, VerifyingKey};
 
 pub mod api;
+pub mod domain;
+pub mod error;
+
+// Re-export commonly used types
+pub use error::{YkadaError, YkadaResult};
 
 const DEFAULT_PIN: &[u8] = b"123456";
 const DEFAULT_SECRET_KEY: &SecretKey = &[0u8; 32];
