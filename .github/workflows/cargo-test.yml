@@ -3,7 +3,7 @@ name: Cargo Test
 on:
   push:
     branches:
-      - main
+      - "**"
 
 jobs:
   test:
