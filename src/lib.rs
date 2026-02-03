@@ -2,7 +2,7 @@ use std::convert::TryInto;
 
 use ed25519_dalek::pkcs8::DecodePrivateKey;
 use tracing::{debug, info};
-use yubikey::piv::{AlgorithmId, SlotId, import_cv_key, sign_data};
+use yubikey::piv::{import_cv_key, sign_data, AlgorithmId, SlotId};
 use yubikey::{Context, MgmKey, PinPolicy, TouchPolicy, YubiKey};
 
 use ed25519_dalek::{SecretKey, Signature, SigningKey, VerifyingKey};

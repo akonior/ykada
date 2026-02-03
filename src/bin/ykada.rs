@@ -40,7 +40,7 @@ fn main() -> anyhow::Result<()> {
             // read DER from stdin
             let mut buf = Vec::new();
             io::stdin().read_to_end(&mut buf)?;
-            yubikey_piv::load_der_to_yubikey(&buf);
+            ykada::load_der_to_yubikey(&buf);
         }
 
         Commands::Sign => {
@@ -48,7 +48,7 @@ fn main() -> anyhow::Result<()> {
             let mut data = Vec::new();
             io::stdin().read_to_end(&mut data)?;
             // println!("Signing {} bytes using yubikey", data.len());
-            let signature = yubikey_piv::sign_bin_data(&data);
+            let signature = ykada::sign_bin_data(&data);
             // println!("Signature: {:?}", signature);
             std::io::stdout().write_all(&signature)?;
         }
