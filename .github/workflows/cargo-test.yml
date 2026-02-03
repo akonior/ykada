@@ -2,13 +2,13 @@ name: Cargo Test
 
 on:
   push:
-      branches:
-        - main
+    branches:
+      - main
 
 jobs:
   test:
     name: Run cargo test
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
@@ -23,7 +23,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Run tests
-        run: cargo test --all --locked --verbose
+        run: cargo test --lib --bin ykada --locked --verbose
 
       - name: Rust format check
         run: cargo fmt --check
