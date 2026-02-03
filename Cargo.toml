@@ -24,6 +24,7 @@ required-features = ["cli"]
 anyhow = "1.0.100"
 ed25519-dalek = { version = "2.2.0", features = ["pkcs8"] }
 hex = "0.4.3"
+thiserror = "2.0"
 tracing = "0.1"
 yubikey = { git = "https://github.com/mproofs/yubikey.rs", branch = "curve_25519", features = [
   "untested",
