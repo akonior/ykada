@@ -266,4 +266,93 @@ mod tests {
         assert_eq!(config.pin_policy, PinPolicy::recommended_cardano());
         assert_eq!(config.touch_policy, TouchPolicy::recommended_cardano());
     }
+
+    #[test]
+    fn test_generate_key_success() {
+        let pin = Pin::default();
+        let mut device = MockYubiKey::new(pin);
+        device.authenticated = true;
+
+        use crate::ports::KeyConfig;
+        let config = KeyConfig::default();
+        let result = KeyManager::generate_key(&mut device, config.clone());
+        assert!(result.is_ok());
+
+        let verifying_key = result.unwrap();
+        assert_eq!(verifying_key.as_bytes().len(), 32);
+        // Verify key was stored in the slot
+        assert!(device.keys.contains_key(&config.slot));
+    }
+
+    #[test]
+    fn test_generate_key_not_authenticated() {
+        let pin = Pin::default();
+        let mut device = MockYubiKey::new(pin);
+        device.authenticated = false;
+
+        use crate::ports::KeyConfig;
+        let config = KeyConfig::default();
+        let result = KeyManager::generate_key(&mut device, config);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            YkadaError::Device(DeviceError::AuthenticationFailed { .. })
+        ));
+    }
+
+    #[test]
+    fn test_generate_key_slot_occupied() {
+        let pin = Pin::default();
+        let mut device = MockYubiKey::new(pin);
+        device.authenticated = true;
+
+        use crate::ports::KeyConfig;
+        use ed25519_dalek::SecretKey;
+        let mut secret_bytes = [0u8; 32];
+        rng().fill_bytes(&mut secret_bytes);
+        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
+        let config = KeyConfig::default();
+
+        // Import a key to occupy the slot
+        KeyManager::import_key(&mut device, signing_key, config.clone()).unwrap();
+
+        // Try to generate a key in the same slot
+        let result = KeyManager::generate_key(&mut device, config);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            YkadaError::KeyManagement(KeyManagementError::SlotOccupied { .. })
+        ));
+    }
+
+    #[test]
+    fn test_generate_key_and_sign() {
+        let pin = Pin::default();
+        let mut device = MockYubiKey::new(pin.clone());
+        device.authenticated = true;
+
+        use crate::ports::KeyConfig;
+        let config = KeyConfig::default();
+        let verifying_key = KeyManager::generate_key(&mut device, config.clone()).unwrap();
+
+        // Sign data with generated key
+        let data = b"test data";
+        let result = Signer::sign(
+            &mut device,
+            data,
+            config.slot,
+            Algorithm::default_cardano(),
+            Some(&pin),
+        );
+        assert!(result.is_ok());
+
+        // Verify signature
+        let signature_bytes = result.unwrap();
+        let sig_array: [u8; 64] = signature_bytes
+            .try_into()
+            .map_err(|_| "Invalid signature length")
+            .expect("Invalid signature length");
+        let signature = ed25519_dalek::Signature::from_bytes(&sig_array);
+        verifying_key.verify_strict(data, &signature).unwrap();
+    }
 }

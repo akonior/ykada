@@ -19,8 +19,10 @@ use ed25519_dalek::{SecretKey, Signature, SigningKey, VerifyingKey};
 pub mod adapters;
 pub mod api;
 pub mod error;
+pub mod logic;
 pub mod model;
 pub mod ports;
+pub mod use_cases;
 
 // Re-export commonly used types
 pub use error::{YkadaError, YkadaResult};

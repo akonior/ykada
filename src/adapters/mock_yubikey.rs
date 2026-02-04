@@ -96,11 +96,20 @@ impl KeyManager for MockYubiKey {
         Ok(verifying_key)
     }
 
-    fn generate_key(&mut self, _config: KeyConfig) -> YkadaResult<VerifyingKey> {
+    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<VerifyingKey> {
         if !self.authenticated {
             return Err(YkadaError::Device(DeviceError::AuthenticationFailed {
                 reason: "Not authenticated".to_string(),
             }));
+        }
+
+        // Check if slot is already occupied
+        if self.keys.contains_key(&config.slot) {
+            return Err(YkadaError::KeyManagement(
+                KeyManagementError::SlotOccupied {
+                    slot: format!("{:?}", config.slot),
+                },
+            ));
         }
 
         // Generate a random key for testing
@@ -110,7 +119,8 @@ impl KeyManager for MockYubiKey {
         let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
         let verifying_key = signing_key.verifying_key();
 
-        // For mock, we don't actually store it since we don't have a slot in this test
+        // Store the generated key in the slot
+        self.keys.insert(config.slot, (signing_key, verifying_key));
         Ok(verifying_key)
     }
 }
