@@ -247,10 +247,11 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
     fn test_cli_generate_with_defaults() {
         // Check if YubiKey is available
         let mut cmd = Command::cargo_bin("ykada").unwrap();
-        let check_result = cmd.arg("generate").arg("--hardware-key").output();
+        let check_result = cmd.arg("generate").output();
 
         if let Ok(output) = check_result {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -260,7 +261,7 @@ mod tests {
         }
 
         let mut cmd = Command::cargo_bin("ykada").unwrap();
-        let assert = cmd.arg("generate").arg("--hardware-key").assert();
+        let assert = cmd.arg("generate").assert();
 
         let output = assert.get_output();
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -277,13 +278,13 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
     fn test_cli_generate_with_custom_mgmt_key() {
         // Test with a dummy management key (48 hex chars = 24 bytes)
         let dummy_mgmt_key = "0".repeat(48);
         let mut cmd = Command::cargo_bin("ykada").unwrap();
         let result = cmd
             .arg("generate")
-            .arg("--hardware-key")
             .arg("--mgmt-key")
             .arg(&dummy_mgmt_key)
             .assert();
