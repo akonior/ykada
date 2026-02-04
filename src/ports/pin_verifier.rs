@@ -1,7 +1,7 @@
 //! PinVerifier trait - capability to verify PIN
 
-use crate::model::Pin;
 use crate::error::YkadaResult;
+use crate::model::Pin;
 
 /// Capability to verify PIN
 ///

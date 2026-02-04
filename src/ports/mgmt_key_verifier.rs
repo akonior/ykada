@@ -1,7 +1,7 @@
 //! ManagementKeyVerifier trait - capability to authenticate with Management Key
 
-use crate::model::ManagementKey;
 use crate::error::YkadaResult;
+use crate::model::ManagementKey;
 
 /// Capability to authenticate with Management Key
 ///

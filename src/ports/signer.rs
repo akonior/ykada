@@ -1,7 +1,7 @@
 //! Signer trait - capability to sign data
 
-use crate::model::{Algorithm, Pin, Slot};
 use crate::error::YkadaResult;
+use crate::model::{Algorithm, Pin, Slot};
 
 /// Capability to sign data
 ///

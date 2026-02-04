@@ -8,15 +8,15 @@
 //! can be performed, not how they are implemented.
 
 mod device_finder;
-mod pin_verifier;
-mod mgmt_key_verifier;
 mod key_manager;
+mod mgmt_key_verifier;
+mod pin_verifier;
 mod signer;
 
 pub use device_finder::DeviceFinder;
-pub use pin_verifier::PinVerifier;
-pub use mgmt_key_verifier::ManagementKeyVerifier;
 pub use key_manager::{KeyConfig, KeyManager};
+pub use mgmt_key_verifier::ManagementKeyVerifier;
+pub use pin_verifier::PinVerifier;
 pub use signer::Signer;
 
 /// Combined trait for all YubiKey operations

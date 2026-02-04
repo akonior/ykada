@@ -1,7 +1,7 @@
 //! DeviceFinder trait - capability to find and connect to YubiKey devices
 
-use crate::error::YkadaResult;
 use super::{KeyManager, ManagementKeyVerifier, PinVerifier, Signer};
+use crate::error::YkadaResult;
 
 /// Capability to find and connect to YubiKey devices
 ///

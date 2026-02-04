@@ -3,13 +3,11 @@
 //! This module provides concrete implementations of YubiKey operation traits
 //! using the yubikey crate's PIV functionality.
 
-use crate::model::{
-    Algorithm, ManagementKey, ManagementKeyError, Pin, Slot,
-};
+use crate::error::{DeviceError, KeyManagementError, YkadaError, YkadaResult};
+use crate::model::{Algorithm, ManagementKey, ManagementKeyError, Pin, Slot};
 use crate::ports::{
     DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
-use crate::error::{DeviceError, KeyManagementError, YkadaError, YkadaResult};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use tracing::{debug, info};
 use yubikey::piv::{import_cv_key, sign_data};
