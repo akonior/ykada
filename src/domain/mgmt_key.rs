@@ -1,7 +1,13 @@
 //! Management Key type for YubiKey PIV authentication
+//!
+//! This module defines a domain type for the PIV Management Key and
+//! provides idiomatic conversions to the yubikey crate's `MgmKey`.
 
+use std::convert::TryFrom;
 use std::fmt;
+
 use thiserror::Error;
+use yubikey::{MgmAlgorithmId, MgmKey};
 
 /// Management Key for YubiKey PIV authentication
 ///
@@ -15,12 +21,7 @@ impl ManagementKey {
     /// Management Key length in bytes
     pub const LENGTH: usize = 24;
 
-    /// Create a new Management Key from bytes
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the key length is not exactly 24 bytes
-    pub fn new(key: [u8; 24]) -> Self {
+    pub const fn new(key: [u8; 24]) -> Self {
         Self(key)
     }
 
@@ -58,12 +59,40 @@ impl fmt::Debug for ManagementKey {
     }
 }
 
-/// Errors that can occur when creating a Management Key
-#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
+/// Errors that can occur when creating or converting a Management Key
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum ManagementKeyError {
     /// Management Key has invalid length
     #[error("Management Key must be exactly {expected} bytes, got {actual}")]
     InvalidLength { expected: usize, actual: usize },
+
+    /// Underlying yubikey crate rejected the key material
+    #[error("Invalid Management Key material: {reason}")]
+    InvalidMaterial { reason: String },
+}
+
+/// Fallible conversion from domain `ManagementKey` to yubikey crate's `MgmKey`.
+///
+/// This keeps the conversion logic close to the domain type and allows
+/// call-sites to use idiomatic `try_from` / `try_into` / `?` patterns.
+impl TryFrom<&ManagementKey> for MgmKey {
+    type Error = ManagementKeyError;
+
+    fn try_from(key: &ManagementKey) -> Result<Self, Self::Error> {
+        MgmKey::from_bytes(key.as_array(), Some(MgmAlgorithmId::Aes192)).map_err(|e| {
+            ManagementKeyError::InvalidMaterial {
+                reason: e.to_string(),
+            }
+        })
+    }
+}
+
+impl TryFrom<ManagementKey> for MgmKey {
+    type Error = ManagementKeyError;
+
+    fn try_from(key: ManagementKey) -> Result<Self, Self::Error> {
+        MgmKey::try_from(&key)
+    }
 }
 
 #[cfg(test)]
