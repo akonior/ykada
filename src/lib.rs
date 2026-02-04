@@ -27,6 +27,9 @@ pub mod use_cases;
 // Re-export commonly used types
 pub use error::{YkadaError, YkadaResult};
 
+// Re-export public API
+pub use api::{generate_key, generate_key_with_config};
+
 const DEFAULT_PIN: &[u8] = b"123456";
 const DEFAULT_SECRET_KEY: &SecretKey = &[0u8; 32];
 
