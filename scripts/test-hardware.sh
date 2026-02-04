@@ -9,7 +9,7 @@ ykman piv access change-management-key --management-key 010203040506070801020304
 
 if [ -z "$1" ]; then
     # Run all hardware tests
-    cargo test --lib yubikey::piv --features hardware-tests -- --test-threads=1
+    cargo test --lib adapter --features hardware-tests -- --test-threads=1
 else
     # Run specific test
     cargo test --lib "$1" --features hardware-tests -- --test-threads=1

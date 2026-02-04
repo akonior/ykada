@@ -1,19 +1,7 @@
-/*!
-YubiKey operations module
-
-This module defines trait algebras (interfaces) for YubiKey operations
-and provides concrete implementations. The traits allow dependency injection
-and make the code testable without requiring actual hardware.
-*/
-
-//! YubiKey implementations module
+//! YubiKey implementations module (legacy re-exports)
 //!
-//! This module provides concrete implementations of YubiKey operation traits.
-//! Currently supports PIV (Personal Identity Verification) implementation.
-//! Future implementations may include OpenPGP support.
-//!
-//! Trait definitions (algebras) are in `crate::domain::ops`.
+//! This module re-exports adapters from the new structure for backward compatibility.
+//! New code should use `crate::adapters` directly.
 
-mod piv;
-
-pub use piv::{PivDeviceFinder, PivYubiKey};
+// Re-export adapters
+pub use crate::adapters::{PivDeviceFinder, PivYubiKey};

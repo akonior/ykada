@@ -6,3 +6,4 @@ Future improvements and extensions:
 - Shared test suite for yubikey and yubikey mock parametrized by concrete implementation
 - test yubikey version
 - management key change functionality
+- remove rand - deterministic tests

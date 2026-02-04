@@ -1,22 +1,18 @@
-//! Domain types for YubiKey operations
+//! Domain types for YubiKey operations (legacy re-exports)
 //!
-//! This module defines domain-specific types that wrap primitives to:
-//! - Prevent primitive obsession
-//! - Enforce invariants at construction
-//! - Provide type safety
+//! This module re-exports types from the new structure for backward compatibility.
+//! New code should use `crate::model` and `crate::ports` directly.
 
-mod algorithm;
-mod mgmt_key;
-mod ops;
-mod pin;
-mod policy;
-mod slot;
+// Re-export model types
+pub use crate::model::{
+    Algorithm, AlgorithmError, ManagementKey, ManagementKeyError, Pin, PinError, PinPolicy,
+    PolicyError, Slot, SlotError, TouchPolicy,
+};
 
-pub use algorithm::{Algorithm, AlgorithmError};
-pub use mgmt_key::{ManagementKey, ManagementKeyError};
-pub use ops::{
+// Re-export port types
+pub use crate::ports::{
     DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer, YubiKeyOps,
 };
-pub use pin::{Pin, PinError};
-pub use policy::{PinPolicy, PolicyError, TouchPolicy};
-pub use slot::{Slot, SlotError};
+
+// Keep ops module for tests that reference it
+mod ops;

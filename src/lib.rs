@@ -11,14 +11,19 @@ use tracing::{debug, info};
 use ::yubikey::piv::{import_cv_key, sign_data};
 use ::yubikey::{Context, MgmKey, PinPolicy as YkPinPolicy, TouchPolicy as YkTouchPolicy, YubiKey};
 
-// Use domain types and convert - this is the proper way going forward
-use crate::domain::{Algorithm, Slot};
+// Use model types and convert - this is the proper way going forward
+use crate::model::{Algorithm, Slot};
 
 use ed25519_dalek::{SecretKey, Signature, SigningKey, VerifyingKey};
 
 pub mod api;
-pub mod domain;
+pub mod model;
+pub mod ports;
+pub mod adapters;
 pub mod error;
+// Legacy domain module - kept for backward compatibility during refactoring
+pub mod domain;
+// Legacy yubikey module - kept for backward compatibility during refactoring
 pub mod yubikey;
 
 // Re-export commonly used types

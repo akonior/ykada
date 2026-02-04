@@ -1,0 +1,160 @@
+//! Mock YubiKey adapter for testing ports (traits)
+//!
+//! This module provides a mock implementation of YubiKey operation traits
+//! for testing purposes. It is only available in test scope.
+
+#[cfg(test)]
+use crate::error::{DeviceError, KeyManagementError, YkadaError, YkadaResult};
+#[cfg(test)]
+use crate::model::{Algorithm, ManagementKey, Pin, Slot};
+#[cfg(test)]
+use crate::ports::{
+    DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
+};
+#[cfg(test)]
+use ed25519_dalek::{SigningKey, VerifyingKey};
+#[cfg(test)]
+use rand::rng;
+#[cfg(test)]
+use rand::RngCore;
+#[cfg(test)]
+use std::collections::HashMap;
+#[cfg(test)]
+
+/// Mock implementation for testing trait behavior
+#[cfg(test)]
+#[derive(Debug, Clone)]
+pub struct MockYubiKey {
+    pub pin: Pin,
+    pub mgmt_key: ManagementKey,
+    pub keys: HashMap<Slot, (SigningKey, VerifyingKey)>,
+    pub authenticated: bool,
+    pub pin_verified: bool,
+}
+
+#[cfg(test)]
+impl MockYubiKey {
+    pub fn new(pin: Pin) -> Self {
+        Self {
+            pin,
+            mgmt_key: ManagementKey::new([0u8; 24]), // Default mock management key
+            keys: HashMap::new(),
+            authenticated: false,
+            pin_verified: false,
+        }
+    }
+}
+
+#[cfg(test)]
+impl PinVerifier for MockYubiKey {
+    fn verify_pin(&mut self, pin: &Pin) -> YkadaResult<()> {
+        if pin.as_bytes() == self.pin.as_bytes() {
+            self.pin_verified = true;
+            Ok(())
+        } else {
+            Err(YkadaError::Device(DeviceError::PinVerificationFailed {
+                reason: "Invalid PIN".to_string(),
+            }))
+        }
+    }
+}
+
+#[cfg(test)]
+impl ManagementKeyVerifier for MockYubiKey {
+    fn authenticate(&mut self, mgmt_key: Option<&ManagementKey>) -> YkadaResult<()> {
+        let key_to_check = mgmt_key.unwrap_or(&self.mgmt_key);
+        if key_to_check.as_bytes() == self.mgmt_key.as_bytes() {
+            self.authenticated = true;
+            Ok(())
+        } else {
+            Err(YkadaError::Device(DeviceError::AuthenticationFailed {
+                reason: "Invalid Management Key".to_string(),
+            }))
+        }
+    }
+}
+
+#[cfg(test)]
+impl KeyManager for MockYubiKey {
+    fn import_key(&mut self, key: SigningKey, config: KeyConfig) -> YkadaResult<VerifyingKey> {
+        if !self.authenticated {
+            return Err(YkadaError::Device(DeviceError::AuthenticationFailed {
+                reason: "Not authenticated".to_string(),
+            }));
+        }
+
+        if self.keys.contains_key(&config.slot) {
+            return Err(YkadaError::KeyManagement(
+                KeyManagementError::SlotOccupied {
+                    slot: format!("{:?}", config.slot),
+                },
+            ));
+        }
+
+        let verifying_key = key.verifying_key();
+        self.keys.insert(config.slot, (key, verifying_key));
+        Ok(verifying_key)
+    }
+
+    fn generate_key(&mut self, _config: KeyConfig) -> YkadaResult<VerifyingKey> {
+        if !self.authenticated {
+            return Err(YkadaError::Device(DeviceError::AuthenticationFailed {
+                reason: "Not authenticated".to_string(),
+            }));
+        }
+
+        // Generate a random key for testing
+        use ed25519_dalek::SecretKey;
+        let mut secret_bytes = [0u8; 32];
+        rng().fill_bytes(&mut secret_bytes);
+        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
+        let verifying_key = signing_key.verifying_key();
+
+        // For mock, we don't actually store it since we don't have a slot in this test
+        Ok(verifying_key)
+    }
+}
+
+#[cfg(test)]
+impl Signer for MockYubiKey {
+    fn sign(
+        &mut self,
+        data: &[u8],
+        slot: Slot,
+        _algorithm: Algorithm,
+        pin: Option<&Pin>,
+    ) -> YkadaResult<Vec<u8>> {
+        // Verify PIN if provided
+        if let Some(pin) = pin {
+            self.verify_pin(pin)?;
+        }
+
+        // Find key in slot
+        let (signing_key, _) = self.keys.get(&slot).ok_or_else(|| {
+            YkadaError::KeyManagement(KeyManagementError::KeyNotFound {
+                slot: format!("{:?}", slot),
+            })
+        })?;
+
+        // Sign the data
+        use ed25519_dalek::Signer;
+        let signature = signing_key.sign(data);
+        Ok(signature.to_bytes().to_vec())
+    }
+}
+
+#[cfg(test)]
+pub struct MockDeviceFinder {
+    pub device: Option<MockYubiKey>,
+}
+
+#[cfg(test)]
+impl DeviceFinder for MockDeviceFinder {
+    type Device = MockYubiKey;
+
+    fn find_first(&self) -> YkadaResult<Self::Device> {
+        self.device
+            .clone()
+            .ok_or_else(|| YkadaError::Device(DeviceError::NotFound))
+    }
+}
