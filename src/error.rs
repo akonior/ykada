@@ -112,6 +112,10 @@ pub enum DomainError {
     /// Policy error
     #[error("Policy error: {0}")]
     Policy(#[from] crate::domain::PolicyError),
+
+    /// Management Key error
+    #[error("Management Key error: {0}")]
+    ManagementKey(#[from] crate::domain::ManagementKeyError),
 }
 
 /// Key management errors

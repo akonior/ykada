@@ -1,15 +1,25 @@
+// Legacy functions - these will be refactored to use trait-based approach
+// TODO: Refactor to use yubikey::ops traits
+
 use std::convert::TryInto;
 
 use ed25519_dalek::pkcs8::DecodePrivateKey;
 use tracing::{debug, info};
-use yubikey::piv::{import_cv_key, sign_data, AlgorithmId, SlotId};
-use yubikey::{Context, MgmKey, PinPolicy, TouchPolicy, YubiKey};
+
+// Import yubikey crate types - these are used by legacy functions
+// Use fully qualified paths to avoid conflict with our yubikey module
+use ::yubikey::piv::{import_cv_key, sign_data};
+use ::yubikey::{Context, MgmKey, PinPolicy as YkPinPolicy, TouchPolicy as YkTouchPolicy, YubiKey};
+
+// Use domain types and convert - this is the proper way going forward
+use crate::domain::{Algorithm, Slot};
 
 use ed25519_dalek::{SecretKey, Signature, SigningKey, VerifyingKey};
 
 pub mod api;
 pub mod domain;
 pub mod error;
+pub mod yubikey;
 
 // Re-export commonly used types
 pub use error::{YkadaError, YkadaResult};
@@ -50,11 +60,11 @@ pub fn load_sk_to_yubikey(sk: SigningKey) -> VerifyingKey {
 
     import_cv_key(
         &mut yubikey,
-        SlotId::Signature,
-        AlgorithmId::Ed25519,
+        Slot::default_signing().to_yubikey_slot_id(),
+        Algorithm::default_cardano().to_yubikey_algorithm_id(),
         key_data,
-        TouchPolicy::Never,
-        PinPolicy::Always,
+        YkTouchPolicy::Never,
+        YkPinPolicy::Always,
     )
     .unwrap();
 
@@ -69,10 +79,14 @@ pub fn sign_raw_data(data: &[u8]) -> Signature {
     yubikey.verify_pin(DEFAULT_PIN).unwrap();
     debug!("PIN verified");
 
-    let signature_yubikey: Vec<u8> =
-        sign_data(&mut yubikey, data, AlgorithmId::Ed25519, SlotId::Signature)
-            .unwrap()
-            .to_vec();
+    let signature_yubikey: Vec<u8> = sign_data(
+        &mut yubikey,
+        data,
+        Algorithm::default_cardano().to_yubikey_algorithm_id(),
+        Slot::default_signing().to_yubikey_slot_id(),
+    )
+    .unwrap()
+    .to_vec();
     debug!("Result of sign_data: {:?}", signature_yubikey);
 
     let sig_bytes: [u8; Signature::BYTE_SIZE] = signature_yubikey[..]

@@ -5,15 +5,19 @@ edition = "2021"
 
 # Feature Flags:
 # - `cli` (default): Includes the command-line interface binary
+# - `hardware-tests`: Enables hardware tests that require YubiKey device
 #
 # Usage:
 # - As a library only: `ykada = { version = "0.1", default-features = false }`
 # - With CLI (default): `ykada = "0.1"`
 # - Install CLI tool: `cargo install ykada`
+# - Run hardware tests: `cargo test --features hardware-tests`
+# - Run ignored tests: `cargo test --ignored` (alternative)
 
 [features]
 default = ["cli"]
 cli = ["dep:clap", "dep:clap-verbosity-flag", "dep:tracing-subscriber"]
+hardware-tests = []
 
 [[bin]]
 name = "ykada"
@@ -42,3 +46,4 @@ env_logger = "0.11.8"
 
 [dev-dependencies]
 assert_cmd = "=2.0.17"
+rand = "0.9"
