@@ -200,7 +200,7 @@ mod tests {
     use ed25519_dalek::SigningKey;
     use std::convert::TryInto;
 
-    // These tests mirror the tests in domain/ops.rs but use real YubiKey hardware
+    // These tests mirror the tests in adapters/tests.rs but use real YubiKey hardware
     // They should have the same names and test the same scenarios to ensure
     // that mock implementations accurately simulate real hardware behavior.
     // All hardware tests are conditionally ignored unless --features hardware-tests is used.

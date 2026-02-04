@@ -16,15 +16,11 @@ use crate::model::{Algorithm, Slot};
 
 use ed25519_dalek::{SecretKey, Signature, SigningKey, VerifyingKey};
 
+pub mod adapters;
 pub mod api;
+pub mod error;
 pub mod model;
 pub mod ports;
-pub mod adapters;
-pub mod error;
-// Legacy domain module - kept for backward compatibility during refactoring
-pub mod domain;
-// Legacy yubikey module - kept for backward compatibility during refactoring
-pub mod yubikey;
 
 // Re-export commonly used types
 pub use error::{YkadaError, YkadaResult};

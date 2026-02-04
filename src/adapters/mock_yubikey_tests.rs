@@ -1,3 +1,8 @@
+//! Tests for port traits using mock adapters
+//!
+//! These tests verify that port traits work correctly with mock implementations.
+//! They should mirror the tests in adapters/yubikey_piv.rs which use real hardware.
+
 #[cfg(test)]
 mod tests {
     use crate::adapters::mock_yubikey::{MockDeviceFinder, MockYubiKey};
@@ -8,8 +13,6 @@ mod tests {
     use rand::rng;
     use rand::RngCore;
     use std::convert::TryInto;
-
-    // Test suite - these tests should be mirrored in adapters/yubikey_piv.rs with real hardware
 
     #[test]
     fn test_mgmt_key_authentication_success_default() {
