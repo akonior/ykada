@@ -99,23 +99,23 @@ pub enum CryptoError {
 pub enum DomainError {
     /// PIN validation error
     #[error("PIN validation error: {0}")]
-    Pin(#[from] crate::domain::PinError),
+    Pin(#[from] crate::model::PinError),
 
     /// Slot error
     #[error("Slot error: {0}")]
-    Slot(#[from] crate::domain::SlotError),
+    Slot(#[from] crate::model::SlotError),
 
     /// Algorithm error
     #[error("Algorithm error: {0}")]
-    Algorithm(#[from] crate::domain::AlgorithmError),
+    Algorithm(#[from] crate::model::AlgorithmError),
 
     /// Policy error
     #[error("Policy error: {0}")]
-    Policy(#[from] crate::domain::PolicyError),
+    Policy(#[from] crate::model::PolicyError),
 
     /// Management Key error
     #[error("Management Key error: {0}")]
-    ManagementKey(#[from] crate::domain::ManagementKeyError),
+    ManagementKey(#[from] crate::model::ManagementKeyError),
 }
 
 /// Key management errors
@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn test_pin_error_conversion() {
-        let pin_err = crate::domain::PinError::TooShort;
+        let pin_err = crate::model::PinError::TooShort;
         let domain_err = DomainError::Pin(pin_err);
         let ykada_err = YkadaError::Domain(domain_err);
         assert!(ykada_err.to_string().contains("PIN"));

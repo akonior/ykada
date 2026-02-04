@@ -3,11 +3,11 @@
 //! This module provides concrete implementations of YubiKey operation traits
 //! using the yubikey crate's PIV functionality.
 
-use crate::domain::{
-    Algorithm, DeviceFinder, KeyConfig, KeyManager, ManagementKey, ManagementKeyError,
-    ManagementKeyVerifier, Pin, PinVerifier, Signer, Slot,
-};
 use crate::error::{DeviceError, KeyManagementError, YkadaError, YkadaResult};
+use crate::model::{Algorithm, ManagementKey, ManagementKeyError, Pin, Slot};
+use crate::ports::{
+    DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
+};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use tracing::{debug, info};
 use yubikey::piv::{import_cv_key, sign_data};
@@ -194,11 +194,11 @@ impl Signer for PivYubiKey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{ManagementKey, PinPolicy, TouchPolicy};
+    use crate::model::{ManagementKey, PinPolicy, TouchPolicy};
     use ed25519_dalek::SigningKey;
     use std::convert::TryInto;
 
-    // These tests mirror the tests in domain/ops.rs but use real YubiKey hardware
+    // These tests mirror the tests in adapters/tests.rs but use real YubiKey hardware
     // They should have the same names and test the same scenarios to ensure
     // that mock implementations accurately simulate real hardware behavior.
     // All hardware tests are conditionally ignored unless --features hardware-tests is used.
