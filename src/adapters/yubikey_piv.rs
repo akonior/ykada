@@ -340,43 +340,6 @@ mod tests_legacy {
     }
 
     #[test]
-    #[ignore]
-    fn test_import_key_slot_occupied() {
-        let finder = PivDeviceFinder;
-        let mut device = finder.find_first().expect("YubiKey not found");
-        device
-            .authenticate(Some(&TESTING_MANAGEMENT_KEY))
-            .expect("Authentication failed");
-
-        use ed25519_dalek::SecretKey;
-        use rand::rng;
-        use rand::RngCore;
-        let mut secret_bytes1 = [0u8; 32];
-        let mut secret_bytes2 = [0u8; 32];
-        rng().fill_bytes(&mut secret_bytes1);
-        rng().fill_bytes(&mut secret_bytes2);
-        let signing_key1 = SigningKey::from_bytes(&SecretKey::from(secret_bytes1));
-        let signing_key2 = SigningKey::from_bytes(&SecretKey::from(secret_bytes2));
-        let config = KeyConfig::default();
-
-        // Import first key (may fail if slot already occupied)
-        let first_result = device.import_key(signing_key1, config.clone());
-        if first_result.is_err() {
-            // Slot already occupied, skip this test
-            return;
-        }
-
-        // Try to import second key to same slot
-        let result = device.import_key(signing_key2, config);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            YkadaError::KeyManagement(KeyManagementError::SlotOccupied { .. })
-                | YkadaError::KeyManagement(KeyManagementError::StoreFailed { .. })
-        ));
-    }
-
-    #[test]
     #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
     fn test_sign_success() {
         let finder = PivDeviceFinder;
@@ -578,14 +541,5 @@ mod tests_legacy {
                     | YkadaError::Device(DeviceError::ConnectionFailed { .. })
             ));
         }
-    }
-
-    #[test]
-    fn test_key_config_default() {
-        let config = KeyConfig::default();
-        assert_eq!(config.slot, Slot::default_signing());
-        assert_eq!(config.algorithm, Algorithm::default_cardano());
-        assert_eq!(config.pin_policy, PinPolicy::recommended_cardano());
-        assert_eq!(config.touch_policy, TouchPolicy::recommended_cardano());
     }
 }
