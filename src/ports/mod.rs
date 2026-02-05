@@ -7,6 +7,7 @@
 //! These traits are PIV/OpenPGP agnostic - they define what operations
 //! can be performed, not how they are implemented.
 
+pub(crate) mod contract_tests;
 mod device_finder;
 mod key_manager;
 mod mgmt_key_verifier;

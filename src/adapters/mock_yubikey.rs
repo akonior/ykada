@@ -168,3 +168,19 @@ impl DeviceFinder for MockDeviceFinder {
             .ok_or_else(|| YkadaError::Device(DeviceError::NotFound))
     }
 }
+
+#[cfg(test)]
+mod tests3 {
+    use super::*;
+    use crate::contract_tests_for;
+    use crate::ports::contract_tests::yubikey_contract;
+
+    contract_tests_for!(
+        fake_yubikey_contract,
+        make = || MockYubiKey::new(Pin::default()),
+        tests = {
+            test_pin_verification_success => yubikey_contract::test_pin_verification_success,
+            test_pin_verification_failure => yubikey_contract::test_pin_verification_failure,
+        }
+    );
+}
