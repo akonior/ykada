@@ -35,7 +35,7 @@ if [[ ! -x "$RELEASE_BIN" ]]; then
 fi
 
 step "Loading private key (sk.der) into YubiKey"
-cat "$TMPDIR"/sk.der | "$RELEASE_BIN" load-key
+cat "$TMPDIR"/sk.der | "$RELEASE_BIN" import-key
 ok "Private key loaded into YubiKey"
 
 step "Preparing example message to sign"

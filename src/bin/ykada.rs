@@ -18,7 +18,7 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Load a private key (DER) into YubiKey
-    LoadKey,
+    ImportKey,
 
     /// Sign data provided via stdin
     Sign,
@@ -106,7 +106,7 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     match cli.command {
-        Commands::LoadKey => {
+        Commands::ImportKey => {
             // read DER from stdin
             let mut buf = Vec::new();
             io::stdin().read_to_end(&mut buf)?;
