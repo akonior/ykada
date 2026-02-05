@@ -57,29 +57,31 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::mock_yubikey::{MockDeviceFinder, MockYubiKey};
+    use crate::adapters::fake_yubikey::{FakeDeviceFinder, FakeYubiKey};
     use crate::model::{ManagementKey, Pin};
 
     #[test]
     fn test_generate_key_success() {
         let pin = Pin::default();
-        let device = MockYubiKey::new(pin);
-        let finder = MockDeviceFinder {
+        let device = FakeYubiKey::new(pin);
+        let finder = FakeDeviceFinder {
             device: Some(device),
         };
 
         let config = KeyConfig::default();
-        let mgmt_key = ManagementKey::new([0u8; 24]);
+        let mgmt_key = ManagementKey::new([
+            1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 9,
+        ]);
         let result = generate_key(&finder, config, Some(&mgmt_key));
 
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "error: {:?}", result.err());
         let verifying_key = result.unwrap();
         assert_eq!(verifying_key.as_bytes().len(), 32);
     }
 
     #[test]
     fn test_generate_key_device_not_found() {
-        let finder = MockDeviceFinder { device: None };
+        let finder = FakeDeviceFinder { device: None };
         let config = KeyConfig::default();
         let result = generate_key(&finder, config, None);
 
@@ -93,8 +95,8 @@ mod tests {
     #[test]
     fn test_generate_key_authentication_failed() {
         let pin = Pin::default();
-        let device = MockYubiKey::new(pin);
-        let finder = MockDeviceFinder {
+        let device = FakeYubiKey::new(pin);
+        let finder = FakeDeviceFinder {
             device: Some(device),
         };
 
