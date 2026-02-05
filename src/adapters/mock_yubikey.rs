@@ -185,6 +185,8 @@ mod tests {
             test_pin_verification_failure => yubikey_contract::test_pin_verification_failure,
             test_mgmt_key_authentication_success_default => yubikey_contract::test_mgmt_key_authentication_success_default,
             test_mgmt_key_authentication_failure => yubikey_contract::test_mgmt_key_authentication_failure,
+            test_import_key_success => yubikey_contract::test_import_key_success,
+            test_import_key_fail_not_authenticated => yubikey_contract::test_import_key_fail_not_authenticated,
         }
     );
 }

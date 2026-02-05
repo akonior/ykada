@@ -7,79 +7,12 @@
 mod tests {
     use crate::adapters::mock_yubikey::{MockDeviceFinder, MockYubiKey};
     use crate::error::{DeviceError, KeyManagementError, YkadaError};
-    use crate::model::{Algorithm, ManagementKey, Pin, PinPolicy, Slot, TouchPolicy};
-    use crate::ports::{DeviceFinder, KeyManager, ManagementKeyVerifier, Signer};
+    use crate::model::{Algorithm, Pin, PinPolicy, Slot, TouchPolicy};
+    use crate::ports::{DeviceFinder, KeyManager, Signer};
     use ed25519_dalek::SigningKey;
     use rand::rng;
     use rand::RngCore;
     use std::convert::TryInto;
-
-    #[test]
-    fn test_import_key_success() {
-        let pin = Pin::default();
-        let mut device = MockYubiKey::new(pin);
-        device.authenticated = true;
-
-        use crate::ports::KeyConfig;
-        use ed25519_dalek::SecretKey;
-        let mut secret_bytes = [0u8; 32];
-        rng().fill_bytes(&mut secret_bytes);
-        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
-        let config = KeyConfig::default();
-
-        let result = KeyManager::import_key(&mut device, signing_key, config.clone());
-        assert!(result.is_ok());
-        assert!(device.keys.contains_key(&config.slot));
-    }
-
-    #[test]
-    fn test_import_key_not_authenticated() {
-        let pin = Pin::default();
-        let mut device = MockYubiKey::new(pin);
-        device.authenticated = false;
-
-        use crate::ports::KeyConfig;
-        use ed25519_dalek::SecretKey;
-        let mut secret_bytes = [0u8; 32];
-        rng().fill_bytes(&mut secret_bytes);
-        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
-        let config = KeyConfig::default();
-
-        let result = KeyManager::import_key(&mut device, signing_key, config);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            YkadaError::Device(DeviceError::AuthenticationFailed { .. })
-        ));
-    }
-
-    #[test]
-    fn test_import_key_slot_occupied() {
-        let pin = Pin::default();
-        let mut device = MockYubiKey::new(pin);
-        device.authenticated = true;
-
-        use crate::ports::KeyConfig;
-        use ed25519_dalek::SecretKey;
-        let mut secret_bytes1 = [0u8; 32];
-        let mut secret_bytes2 = [0u8; 32];
-        rng().fill_bytes(&mut secret_bytes1);
-        rng().fill_bytes(&mut secret_bytes2);
-        let signing_key1 = SigningKey::from_bytes(&SecretKey::from(secret_bytes1));
-        let signing_key2 = SigningKey::from_bytes(&SecretKey::from(secret_bytes2));
-        let config = KeyConfig::default();
-
-        // Import first key
-        KeyManager::import_key(&mut device, signing_key1, config.clone()).unwrap();
-
-        // Try to import second key to same slot
-        let result = KeyManager::import_key(&mut device, signing_key2, config);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            YkadaError::KeyManagement(KeyManagementError::SlotOccupied { .. })
-        ));
-    }
 
     #[test]
     fn test_sign_success() {

@@ -260,6 +260,8 @@ mod tests {
             test_pin_verification_failure => yubikey_contract::test_pin_verification_failure,
             test_mgmt_key_authentication_success_default => yubikey_contract::test_mgmt_key_authentication_success_default,
             test_mgmt_key_authentication_failure => yubikey_contract::test_mgmt_key_authentication_failure,
+            test_import_key_success => yubikey_contract::test_import_key_success,
+            test_import_key_fail_not_authenticated => yubikey_contract::test_import_key_fail_not_authenticated,
         }
     );
 }
@@ -267,7 +269,7 @@ mod tests {
 #[cfg(test)]
 mod tests_legacy {
     use super::*;
-    use crate::model::{ManagementKey, PinPolicy, TouchPolicy};
+    use crate::model::ManagementKey;
     use ed25519_dalek::SigningKey;
     use std::convert::TryInto;
 
@@ -280,64 +282,6 @@ mod tests_legacy {
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
         0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x09,
     ]);
-
-    #[test]
-    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
-    fn test_import_key_success() {
-        let finder = PivDeviceFinder;
-        let mut device = finder.find_first().expect("YubiKey not found");
-
-        device
-            .authenticate(Some(&TESTING_MANAGEMENT_KEY))
-            .expect("Authentication failed");
-
-        use ed25519_dalek::SecretKey;
-        use rand::rng;
-        use rand::RngCore;
-        let mut secret_bytes = [0u8; 32];
-        rng().fill_bytes(&mut secret_bytes);
-        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
-        let config = KeyConfig::default();
-
-        let result = device.import_key(signing_key, config.clone());
-        // May fail if slot is occupied, but should work on clean device
-        if result.is_ok() {
-            // Verify key was imported
-            assert!(result.is_ok());
-        } else {
-            // Check it's a slot occupied error, not authentication error
-            let err = result.unwrap_err();
-            assert!(matches!(
-                err,
-                YkadaError::KeyManagement(KeyManagementError::SlotOccupied { .. })
-                    | YkadaError::KeyManagement(KeyManagementError::StoreFailed { .. })
-            ));
-        }
-    }
-
-    #[test]
-    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
-    fn test_import_key_not_authenticated() {
-        let finder = PivDeviceFinder;
-        let mut device = finder.find_first().expect("YubiKey not found");
-        // Don't authenticate
-
-        use ed25519_dalek::SecretKey;
-        use rand::rng;
-        use rand::RngCore;
-        let mut secret_bytes = [0u8; 32];
-        rng().fill_bytes(&mut secret_bytes);
-        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
-        let config = KeyConfig::default();
-
-        let result = device.import_key(signing_key, config);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            YkadaError::Device(DeviceError::AuthenticationFailed { .. })
-                | YkadaError::KeyManagement(KeyManagementError::StoreFailed { .. })
-        ));
-    }
 
     #[test]
     #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests

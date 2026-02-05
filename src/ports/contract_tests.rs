@@ -23,10 +23,12 @@ macro_rules! contract_tests_for {
 
 #[cfg(test)]
 pub mod yubikey_contract {
+    use ed25519_dalek::{SecretKey, SigningKey};
+
     use crate::{
         error::DeviceError,
         model::{ManagementKey, Pin},
-        ports::{ManagementKeyVerifier, PinVerifier},
+        ports::{KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier},
         YkadaError,
     };
 
@@ -66,5 +68,32 @@ pub mod yubikey_contract {
             result.unwrap_err(),
             YkadaError::Device(DeviceError::AuthenticationFailed { .. })
         ));
+    }
+
+    pub(crate) fn test_import_key_fail_not_authenticated(mut device: impl KeyManager) {
+        let secret_bytes = [0u8; 32];
+        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
+        let config = KeyConfig::default();
+
+        let result = device.import_key(signing_key, config.clone());
+
+        assert!(matches!(
+            result.unwrap_err(),
+            YkadaError::Device(DeviceError::AuthenticationFailed { .. })
+        ));
+    }
+
+    pub(crate) fn test_import_key_success(mut device: impl KeyManager + ManagementKeyVerifier) {
+        device
+            .authenticate(Some(&TESTING_MANAGEMENT_KEY))
+            .expect("Authentication failed");
+
+        let secret_bytes = [0u8; 32];
+        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
+        let config = KeyConfig::default();
+
+        let result = device.import_key(signing_key, config.clone());
+
+        assert!(result.is_ok(), "error: {:?}", result.err());
     }
 }
