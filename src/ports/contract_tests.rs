@@ -26,9 +26,9 @@ pub mod yubikey_contract {
     use ed25519_dalek::{SecretKey, SigningKey};
 
     use crate::{
-        error::DeviceError,
-        model::{ManagementKey, Pin},
-        ports::{KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier},
+        error::{CryptoError, DeviceError},
+        model::{Algorithm, ManagementKey, Pin, Slot, TouchPolicy},
+        ports::{KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer},
         YkadaError,
     };
 
@@ -95,5 +95,72 @@ pub mod yubikey_contract {
         let result = device.import_key(signing_key, config.clone());
 
         assert!(result.is_ok(), "error: {:?}", result.err());
+    }
+
+    pub(crate) fn test_sign_key_not_found(mut device: impl Signer) {
+        // Use a slot that likely doesn't have a key
+        let empty_slot = Slot::Authentication;
+        let result = device.sign(
+            b"test data",
+            empty_slot,
+            Algorithm::default_cardano(),
+            Some(&Pin::default()),
+        );
+
+        match result.unwrap_err() {
+            YkadaError::Crypto(CryptoError::SignatureFailed { .. }) => { /* ok */ }
+            other => panic!("expected error: {other:?}"),
+        }
+    }
+
+    pub(crate) fn test_sign_invalid_pin(mut device: impl Signer) {
+        let result = device.sign(
+            b"test data",
+            Slot::Signature,
+            Algorithm::default_cardano(),
+            Some(&Pin::from_str("999999").unwrap()),
+        );
+
+        match result.unwrap_err() {
+            YkadaError::Device(DeviceError::PinVerificationFailed { .. }) => { /* ok */ }
+            other => panic!("expected error: {other:?}"),
+        }
+    }
+
+    pub(crate) fn test_sign_success(mut device: impl Signer + ManagementKeyVerifier + KeyManager) {
+        device
+            .authenticate(Some(&TESTING_MANAGEMENT_KEY))
+            .expect("Authentication failed");
+
+        let secret_bytes = [0u8; 32];
+        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
+        let verifying_key = signing_key.verifying_key();
+
+        let mut config = KeyConfig::default();
+        config.touch_policy = TouchPolicy::Never;
+
+        let result = device.import_key(signing_key, config.clone());
+
+        assert!(result.is_ok(), "error: {:?}", result.err());
+
+        let data = b"test data";
+        let result = device.sign(
+            data,
+            config.slot,
+            Algorithm::default_cardano(),
+            Some(&Pin::default()),
+        );
+
+        assert!(result.is_ok());
+
+        let signature_bytes = result.unwrap();
+        let sig_array: [u8; 64] = signature_bytes
+            .try_into()
+            .map_err(|_| "Invalid signature length")
+            .expect("Invalid signature length");
+        let signature = ed25519_dalek::Signature::from_bytes(&sig_array);
+        verifying_key
+            .verify_strict(data, &signature)
+            .expect("Signature verification failed");
     }
 }

@@ -262,6 +262,9 @@ mod tests {
             test_mgmt_key_authentication_failure => yubikey_contract::test_mgmt_key_authentication_failure,
             test_import_key_success => yubikey_contract::test_import_key_success,
             test_import_key_fail_not_authenticated => yubikey_contract::test_import_key_fail_not_authenticated,
+            test_sign_key_not_found => yubikey_contract::test_sign_key_not_found,
+            test_sign_invalid_pin => yubikey_contract::test_sign_invalid_pin,
+            test_sign_success => yubikey_contract::test_sign_success,
         }
     );
 }
@@ -282,87 +285,6 @@ mod tests_legacy {
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
         0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x09,
     ]);
-
-    #[test]
-    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
-    fn test_sign_success() {
-        let finder = PivDeviceFinder;
-        let mut device = finder.find_first().expect("YubiKey not found");
-        device
-            .authenticate(Some(&TESTING_MANAGEMENT_KEY))
-            .expect("Authentication failed");
-
-        let pin = Pin::default();
-
-        // Import a key first
-        use ed25519_dalek::SecretKey;
-        use rand::rng;
-        use rand::RngCore;
-        let mut secret_bytes = [0u8; 32];
-        rng().fill_bytes(&mut secret_bytes);
-        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
-        let verifying_key = signing_key.verifying_key();
-        let config = KeyConfig::default();
-
-        // May fail if slot occupied
-        let import_result = device.import_key(signing_key, config.clone());
-        if import_result.is_err() {
-            // Slot occupied, can't test signing
-            return;
-        }
-
-        // Sign data
-        let data = b"test data";
-        let result = device.sign(data, config.slot, Algorithm::default_cardano(), Some(&pin));
-
-        if result.is_ok() {
-            // Verify signature
-            let signature_bytes = result.unwrap();
-            let sig_array: [u8; 64] = signature_bytes
-                .try_into()
-                .map_err(|_| "Invalid signature length")
-                .expect("Invalid signature length");
-            let signature = ed25519_dalek::Signature::from_bytes(&sig_array);
-            verifying_key
-                .verify_strict(data, &signature)
-                .expect("Signature verification failed");
-        } else {
-            // May fail due to PIN or other issues, but should be proper error type
-            let err = result.unwrap_err();
-            assert!(matches!(
-                err,
-                YkadaError::Device(DeviceError::PinVerificationFailed { .. })
-                    | YkadaError::Device(DeviceError::InvalidPin { .. })
-                    | YkadaError::Crypto(_)
-            ));
-        }
-    }
-
-    #[test]
-    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
-    fn test_sign_key_not_found() {
-        let finder = PivDeviceFinder;
-        let mut device = finder.find_first().expect("YubiKey not found");
-
-        let data = b"test data";
-        // Use a slot that likely doesn't have a key
-        let empty_slot = Slot::Authentication;
-        let result = device.sign(
-            data,
-            empty_slot,
-            Algorithm::default_cardano(),
-            Some(&Pin::default()),
-        );
-
-        // Should fail with key not found or signing error
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(matches!(
-            err,
-            YkadaError::KeyManagement(KeyManagementError::KeyNotFound { .. })
-                | YkadaError::Crypto(_)
-        ));
-    }
 
     #[test]
     #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
@@ -423,49 +345,6 @@ mod tests_legacy {
         assert!(matches!(
             result.unwrap_err(),
             YkadaError::Device(DeviceError::AuthenticationFailed { .. })
-        ));
-    }
-
-    #[test]
-    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
-    fn test_sign_pin_required() {
-        let finder = PivDeviceFinder;
-        let mut device = finder.find_first().expect("YubiKey not found");
-        device
-            .authenticate(Some(&TESTING_MANAGEMENT_KEY))
-            .expect("Authentication failed");
-
-        let wrong_pin = Pin::from_str("999999").expect("Invalid PIN");
-
-        // Import a key first
-        use ed25519_dalek::SecretKey;
-        use rand::rng;
-        use rand::RngCore;
-        let mut secret_bytes = [0u8; 32];
-        rng().fill_bytes(&mut secret_bytes);
-        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
-        let config = KeyConfig::default();
-
-        let import_result = device.import_key(signing_key, config.clone());
-        if import_result.is_err() {
-            // Can't test without imported key
-            return;
-        }
-
-        // Try to sign with wrong PIN
-        let data = b"test data";
-        let result = device.sign(
-            data,
-            config.slot,
-            Algorithm::default_cardano(),
-            Some(&wrong_pin), // pin variable not used, only wrong_pin
-        );
-
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            YkadaError::Device(DeviceError::PinVerificationFailed { .. })
-                | YkadaError::Device(DeviceError::InvalidPin { .. })
         ));
     }
 

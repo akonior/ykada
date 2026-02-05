@@ -143,8 +143,8 @@ impl Signer for MockYubiKey {
 
         // Find key in slot
         let (signing_key, _) = self.keys.get(&slot).ok_or_else(|| {
-            YkadaError::KeyManagement(KeyManagementError::KeyNotFound {
-                slot: format!("{:?}", slot),
+            YkadaError::Crypto(crate::error::CryptoError::SignatureFailed {
+                reason: "Key not found".to_string(),
             })
         })?;
 
@@ -187,6 +187,9 @@ mod tests {
             test_mgmt_key_authentication_failure => yubikey_contract::test_mgmt_key_authentication_failure,
             test_import_key_success => yubikey_contract::test_import_key_success,
             test_import_key_fail_not_authenticated => yubikey_contract::test_import_key_fail_not_authenticated,
+            test_sign_key_not_found => yubikey_contract::test_sign_key_not_found,
+            test_sign_invalid_pin => yubikey_contract::test_sign_invalid_pin,
+            test_sign_success => yubikey_contract::test_sign_success,
         }
     );
 }

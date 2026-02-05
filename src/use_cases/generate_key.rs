@@ -69,10 +69,12 @@ mod tests {
         };
 
         let config = KeyConfig::default();
-        let mgmt_key = ManagementKey::new([0u8; 24]);
+        let mgmt_key = ManagementKey::new([
+            1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 9,
+        ]);
         let result = generate_key(&finder, config, Some(&mgmt_key));
 
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "error: {:?}", result.err());
         let verifying_key = result.unwrap();
         assert_eq!(verifying_key.as_bytes().len(), 32);
     }
