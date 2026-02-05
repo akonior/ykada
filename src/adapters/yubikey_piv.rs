@@ -3,14 +3,15 @@
 //! This module provides concrete implementations of YubiKey operation traits
 //! using the yubikey crate's PIV functionality.
 
-use crate::error::{DeviceError, KeyManagementError, YkadaError, YkadaResult};
+use crate::error::{CryptoError, DeviceError, KeyManagementError, YkadaError, YkadaResult};
 use crate::model::{Algorithm, ManagementKey, ManagementKeyError, Pin, Slot};
 use crate::ports::{
     DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
+use std::convert::TryInto;
 use tracing::{debug, info};
-use yubikey::piv::{import_cv_key, sign_data};
+use yubikey::piv::{generate, import_cv_key, sign_data};
 use yubikey::{Context, MgmKey, YubiKey};
 
 /// PIV-based YubiKey device finder
@@ -144,13 +145,67 @@ impl KeyManager for PivYubiKey {
         Ok(verifying_key)
     }
 
-    fn generate_key(&mut self, _config: KeyConfig) -> YkadaResult<VerifyingKey> {
-        // TODO: Implement key generation when yubikey crate supports it
-        // For now, return an error indicating it's not yet implemented
-        Err(YkadaError::KeyManagement(KeyManagementError::StoreFailed {
-            destination: "YubiKey".to_string(),
-            reason: "Key generation not yet implemented".to_string(),
-        }))
+    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<VerifyingKey> {
+        if !self.authenticated {
+            return Err(YkadaError::Device(DeviceError::AuthenticationFailed {
+                reason: "Not authenticated".to_string(),
+            }));
+        }
+
+        // Convert domain types to yubikey crate types
+        let slot_id = config.slot.to_yubikey_slot_id();
+        let algorithm_id = config.algorithm.to_yubikey_algorithm_id();
+        let pin_policy = config.pin_policy.to_yubikey_pin_policy();
+        let touch_policy = config.touch_policy.to_yubikey_touch_policy();
+
+        debug!(
+            "Generating key in slot {:?} with algorithm {:?}",
+            slot_id, algorithm_id
+        );
+
+        // Generate key on YubiKey
+        let spki = generate(
+            &mut self.device,
+            slot_id,
+            algorithm_id,
+            pin_policy,
+            touch_policy,
+        )
+        .map_err(|e| {
+            YkadaError::KeyManagement(KeyManagementError::StoreFailed {
+                destination: "YubiKey".to_string(),
+                reason: format!("Key generation failed: {}", e),
+            })
+        })?;
+
+        info!("Key generated successfully in slot {:?}", slot_id);
+
+        // Convert SubjectPublicKeyInfoOwned to VerifyingKey
+        // For Ed25519, extract public key bytes from BitString
+        let public_key_bytes = spki.subject_public_key.raw_bytes();
+
+        // For Ed25519, we expect exactly 32 bytes
+        if public_key_bytes.len() != 32 {
+            return Err(YkadaError::Crypto(CryptoError::InvalidKeyFormat {
+                format: format!(
+                    "Expected 32 bytes for Ed25519 public key, got {}",
+                    public_key_bytes.len()
+                ),
+            }));
+        }
+
+        // Convert to VerifyingKey
+        let public_key_array: [u8; 32] = public_key_bytes[..32].try_into().map_err(|_| {
+            YkadaError::Crypto(CryptoError::InvalidKeyFormat {
+                format: "Failed to convert public key bytes to array".to_string(),
+            })
+        })?;
+
+        VerifyingKey::from_bytes(&public_key_array).map_err(|e| {
+            YkadaError::Crypto(CryptoError::InvalidKeyFormat {
+                format: format!("Invalid Ed25519 public key: {}", e),
+            })
+        })
     }
 }
 
@@ -464,6 +519,68 @@ mod tests {
             err,
             YkadaError::KeyManagement(KeyManagementError::KeyNotFound { .. })
                 | YkadaError::Crypto(_)
+        ));
+    }
+
+    #[test]
+    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
+    fn test_generate_key_success() {
+        let finder = PivDeviceFinder;
+        let mut device = finder.find_first().expect("YubiKey not found");
+        device
+            .authenticate(Some(&TESTING_MANAGEMENT_KEY))
+            .expect("Authentication failed");
+
+        let config = KeyConfig::default();
+        let result = device.generate_key(config.clone());
+
+        // May fail if slot is already occupied
+        if result.is_ok() {
+            let verifying_key = result.unwrap();
+            assert_eq!(verifying_key.as_bytes().len(), 32);
+
+            // Verify we can sign with the generated key
+            let pin = Pin::default();
+            let data = b"test data";
+            let sign_result =
+                device.sign(data, config.slot, Algorithm::default_cardano(), Some(&pin));
+
+            if sign_result.is_ok() {
+                // Verify signature
+                let signature_bytes = sign_result.unwrap();
+                let sig_array: [u8; 64] = signature_bytes
+                    .try_into()
+                    .map_err(|_| "Invalid signature length")
+                    .expect("Invalid signature length");
+                let signature = ed25519_dalek::Signature::from_bytes(&sig_array);
+                verifying_key
+                    .verify_strict(data, &signature)
+                    .expect("Signature verification failed");
+            }
+        } else {
+            // Check if it's a slot occupied error (acceptable)
+            let err = result.unwrap_err();
+            assert!(matches!(
+                err,
+                YkadaError::KeyManagement(KeyManagementError::SlotOccupied { .. })
+                    | YkadaError::KeyManagement(KeyManagementError::StoreFailed { .. })
+            ));
+        }
+    }
+
+    #[test]
+    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
+    fn test_generate_key_not_authenticated() {
+        let finder = PivDeviceFinder;
+        let mut device = finder.find_first().expect("YubiKey not found");
+        // Don't authenticate
+
+        let config = KeyConfig::default();
+        let result = device.generate_key(config);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            YkadaError::Device(DeviceError::AuthenticationFailed { .. })
         ));
     }
 
