@@ -116,8 +116,10 @@ impl KeyManager for PivYubiKey {
     fn import_key(&mut self, key: SigningKey, config: KeyConfig) -> YkadaResult<VerifyingKey> {
         self.ensure_authenticated()?;
 
+        let algorithm = Algorithm::default_cardano();
+
         debug!("Importing key to slot: {:?}", config.slot);
-        debug!("Algorithm: {:?}", config.algorithm);
+        debug!("Algorithm: {:?}", algorithm);
         debug!(
             "Policies: PIN={:?}, Touch={:?}",
             config.pin_policy, config.touch_policy
@@ -129,7 +131,7 @@ impl KeyManager for PivYubiKey {
         import_cv_key(
             &mut self.device,
             config.slot.to_yubikey_slot_id(),
-            config.algorithm.to_yubikey_algorithm_id(),
+            algorithm.to_yubikey_algorithm_id(),
             key_data,
             config.touch_policy.to_yubikey_touch_policy(),
             config.pin_policy.to_yubikey_pin_policy(),
@@ -154,7 +156,7 @@ impl KeyManager for PivYubiKey {
 
         // Convert domain types to yubikey crate types
         let slot_id = config.slot.to_yubikey_slot_id();
-        let algorithm_id = config.algorithm.to_yubikey_algorithm_id();
+        let algorithm_id = Algorithm::default_cardano().to_yubikey_algorithm_id();
         let pin_policy = config.pin_policy.to_yubikey_pin_policy();
         let touch_policy = config.touch_policy.to_yubikey_touch_policy();
 

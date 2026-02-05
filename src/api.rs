@@ -50,11 +50,9 @@ pub fn generate_key() -> crate::error::YkadaResult<VerifyingKey> {
 /// - Authentication fails
 /// - Key generation fails (e.g., slot already occupied)
 pub fn generate_key_with_config(
-    mut config: KeyConfig,
+    config: KeyConfig,
     mgmt_key: Option<&ManagementKey>,
 ) -> crate::error::YkadaResult<VerifyingKey> {
-    // Always use Ed25519 for Cardano
-    config.algorithm = crate::model::Algorithm::default_cardano();
     let finder = PivDeviceFinder;
     generate_key_use_case(&finder, config, mgmt_key)
 }

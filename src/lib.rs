@@ -16,10 +16,10 @@ use crate::model::{Algorithm, Slot};
 
 use ed25519_dalek::{SecretKey, Signature, SigningKey, VerifyingKey};
 
-pub mod adapters;
+mod adapters;
 pub mod api;
 pub mod error;
-pub mod logic;
+mod logic;
 pub mod model;
 pub mod ports;
 pub mod use_cases;

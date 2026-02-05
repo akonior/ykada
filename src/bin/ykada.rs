@@ -130,7 +130,6 @@ fn main() -> anyhow::Result<()> {
         } => {
             let config = ykada::ports::KeyConfig {
                 slot: slot.into(),
-                algorithm: ykada::model::Algorithm::default_cardano(), // Always Ed25519 for Cardano
                 pin_policy: pin_policy.into(),
                 touch_policy: touch_policy.into(),
             };
