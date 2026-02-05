@@ -15,42 +15,6 @@ mod tests {
     use std::convert::TryInto;
 
     #[test]
-    fn test_mgmt_key_authentication_success_default() {
-        let pin = Pin::default();
-        let mut device = MockYubiKey::new(pin);
-
-        let result = ManagementKeyVerifier::authenticate(&mut device, None);
-        assert!(result.is_ok());
-        assert!(device.authenticated);
-    }
-
-    #[test]
-    fn test_mgmt_key_authentication_success_custom() {
-        let pin = Pin::default();
-        let mut device = MockYubiKey::new(pin);
-        let mgmt_key = ManagementKey::new([0u8; 24]);
-
-        let result = ManagementKeyVerifier::authenticate(&mut device, Some(&mgmt_key));
-        assert!(result.is_ok());
-        assert!(device.authenticated);
-    }
-
-    #[test]
-    fn test_mgmt_key_authentication_failure() {
-        let pin = Pin::default();
-        let mut device = MockYubiKey::new(pin);
-        let wrong_mgmt_key = ManagementKey::new([1u8; 24]);
-
-        let result = ManagementKeyVerifier::authenticate(&mut device, Some(&wrong_mgmt_key));
-        assert!(result.is_err());
-        assert!(!device.authenticated);
-        assert!(matches!(
-            result.unwrap_err(),
-            YkadaError::Device(DeviceError::AuthenticationFailed { .. })
-        ));
-    }
-
-    #[test]
     fn test_import_key_success() {
         let pin = Pin::default();
         let mut device = MockYubiKey::new(pin);

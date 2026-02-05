@@ -28,7 +28,7 @@ pub struct MockYubiKey {
     pub pin: Pin,
     pub mgmt_key: ManagementKey,
     pub keys: HashMap<Slot, (SigningKey, VerifyingKey)>,
-    pub authenticated: bool,
+    pub authenticated: bool, // TOD make priv
     pub pin_verified: bool,
 }
 
@@ -37,7 +37,9 @@ impl MockYubiKey {
     pub fn new(pin: Pin) -> Self {
         Self {
             pin,
-            mgmt_key: ManagementKey::new([0u8; 24]), // Default mock management key
+            mgmt_key: ManagementKey::new([
+                1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 9,
+            ]),
             keys: HashMap::new(),
             authenticated: false,
             pin_verified: false,
@@ -181,6 +183,8 @@ mod tests {
         tests = {
             test_pin_verification_success => yubikey_contract::test_pin_verification_success,
             test_pin_verification_failure => yubikey_contract::test_pin_verification_failure,
+            test_mgmt_key_authentication_success_default => yubikey_contract::test_mgmt_key_authentication_success_default,
+            test_mgmt_key_authentication_failure => yubikey_contract::test_mgmt_key_authentication_failure,
         }
     );
 }

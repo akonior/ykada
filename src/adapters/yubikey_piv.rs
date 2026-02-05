@@ -258,6 +258,8 @@ mod tests {
         tests = {
             test_pin_verification_success => yubikey_contract::test_pin_verification_success,
             test_pin_verification_failure => yubikey_contract::test_pin_verification_failure,
+            test_mgmt_key_authentication_success_default => yubikey_contract::test_mgmt_key_authentication_success_default,
+            test_mgmt_key_authentication_failure => yubikey_contract::test_mgmt_key_authentication_failure,
         }
     );
 }
@@ -278,51 +280,6 @@ mod tests_legacy {
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
         0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x09,
     ]);
-
-    #[test]
-    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
-    fn test_mgmt_key_authentication_success_default() {
-        let finder = PivDeviceFinder;
-        let mut device = finder.find_first().expect("YubiKey not found");
-
-        let result = device.authenticate(None);
-        // May fail if management key was changed, but structure should be correct
-        if result.is_err() {
-            // Check it's an authentication error
-            assert!(matches!(
-                result.unwrap_err(),
-                YkadaError::Device(DeviceError::AuthenticationFailed { .. })
-            ));
-        } else {
-            // Success case
-            assert!(result.is_ok());
-        }
-    }
-
-    #[test]
-    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
-    fn test_mgmt_key_authentication_custom() {
-        let finder = PivDeviceFinder;
-        let mut device = finder.find_first().expect("YubiKey not found");
-
-        // Try with a custom management key (may fail if key doesn't match device's key)
-        // This test verifies the API works, even if authentication fails due to wrong key
-        let mgmt_key = ManagementKey::new([0u8; 24]);
-        let result = device.authenticate(Some(&mgmt_key));
-
-        // May succeed if device uses default key, or fail if key doesn't match
-        // Either way, the API should work correctly
-        if result.is_err() {
-            // Check it's an authentication error (wrong key), not a format error
-            assert!(matches!(
-                result.unwrap_err(),
-                YkadaError::Device(DeviceError::AuthenticationFailed { .. })
-            ));
-        } else {
-            // Success case - custom key matched
-            assert!(result.is_ok());
-        }
-    }
 
     #[test]
     #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
