@@ -1,6 +1,6 @@
-//! Mock YubiKey adapter for testing ports (traits)
+//! Fake YubiKey adapter for testing ports (traits)
 //!
-//! This module provides a mock implementation of YubiKey operation traits
+//! This module provides a fake implementation of YubiKey operation traits
 //! for testing purposes. It is only available in test scope.
 
 #[cfg(test)]
@@ -21,10 +21,10 @@ use rand::RngCore;
 use std::collections::HashMap;
 #[cfg(test)]
 
-/// Mock implementation for testing trait behavior
+/// Fake YubiKey implementation for testing trait behavior
 #[cfg(test)]
 #[derive(Debug, Clone)]
-pub struct MockYubiKey {
+pub struct FakeYubiKey {
     pub pin: Pin,
     pub mgmt_key: ManagementKey,
     pub keys: HashMap<Slot, (SigningKey, VerifyingKey)>,
@@ -33,7 +33,7 @@ pub struct MockYubiKey {
 }
 
 #[cfg(test)]
-impl MockYubiKey {
+impl FakeYubiKey {
     pub fn new(pin: Pin) -> Self {
         Self {
             pin,
@@ -48,7 +48,7 @@ impl MockYubiKey {
 }
 
 #[cfg(test)]
-impl PinVerifier for MockYubiKey {
+impl PinVerifier for FakeYubiKey {
     fn verify_pin(&mut self, pin: &Pin) -> YkadaResult<()> {
         if pin.as_bytes() == self.pin.as_bytes() {
             self.pin_verified = true;
@@ -62,7 +62,7 @@ impl PinVerifier for MockYubiKey {
 }
 
 #[cfg(test)]
-impl ManagementKeyVerifier for MockYubiKey {
+impl ManagementKeyVerifier for FakeYubiKey {
     fn authenticate(&mut self, mgmt_key: Option<&ManagementKey>) -> YkadaResult<()> {
         let key_to_check = mgmt_key.unwrap_or(&self.mgmt_key);
         if key_to_check.as_bytes() == self.mgmt_key.as_bytes() {
@@ -77,7 +77,7 @@ impl ManagementKeyVerifier for MockYubiKey {
 }
 
 #[cfg(test)]
-impl KeyManager for MockYubiKey {
+impl KeyManager for FakeYubiKey {
     fn import_key(&mut self, key: SigningKey, config: KeyConfig) -> YkadaResult<VerifyingKey> {
         if !self.authenticated {
             return Err(YkadaError::Device(DeviceError::AuthenticationFailed {
@@ -119,7 +119,7 @@ impl KeyManager for MockYubiKey {
 }
 
 #[cfg(test)]
-impl Signer for MockYubiKey {
+impl Signer for FakeYubiKey {
     fn sign(
         &mut self,
         data: &[u8],
@@ -147,13 +147,13 @@ impl Signer for MockYubiKey {
 }
 
 #[cfg(test)]
-pub struct MockDeviceFinder {
-    pub device: Option<MockYubiKey>,
+pub struct FakeDeviceFinder {
+    pub device: Option<FakeYubiKey>,
 }
 
 #[cfg(test)]
-impl DeviceFinder for MockDeviceFinder {
-    type Device = MockYubiKey;
+impl DeviceFinder for FakeDeviceFinder {
+    type Device = FakeYubiKey;
 
     fn find_first(&self) -> YkadaResult<Self::Device> {
         self.device
@@ -170,7 +170,7 @@ mod tests {
 
     contract_tests_for!(
         fake_yubikey_contract,
-        make = || MockYubiKey::new(Pin::default()),
+        make = || FakeYubiKey::new(Pin::default()),
         tests = {
             test_pin_verification_success => yubikey_contract::test_pin_verification_success,
             test_pin_verification_failure => yubikey_contract::test_pin_verification_failure,

@@ -57,14 +57,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::mock_yubikey::{MockDeviceFinder, MockYubiKey};
+    use crate::adapters::fake_yubikey::{FakeDeviceFinder, FakeYubiKey};
     use crate::model::{ManagementKey, Pin};
 
     #[test]
     fn test_generate_key_success() {
         let pin = Pin::default();
-        let device = MockYubiKey::new(pin);
-        let finder = MockDeviceFinder {
+        let device = FakeYubiKey::new(pin);
+        let finder = FakeDeviceFinder {
             device: Some(device),
         };
 
@@ -81,7 +81,7 @@ mod tests {
 
     #[test]
     fn test_generate_key_device_not_found() {
-        let finder = MockDeviceFinder { device: None };
+        let finder = FakeDeviceFinder { device: None };
         let config = KeyConfig::default();
         let result = generate_key(&finder, config, None);
 
@@ -95,8 +95,8 @@ mod tests {
     #[test]
     fn test_generate_key_authentication_failed() {
         let pin = Pin::default();
-        let device = MockYubiKey::new(pin);
-        let finder = MockDeviceFinder {
+        let device = FakeYubiKey::new(pin);
+        let finder = FakeDeviceFinder {
             device: Some(device),
         };
 
