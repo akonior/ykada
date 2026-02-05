@@ -8,7 +8,7 @@ mod tests {
     use crate::adapters::mock_yubikey::{MockDeviceFinder, MockYubiKey};
     use crate::error::{DeviceError, KeyManagementError, YkadaError};
     use crate::model::{Algorithm, ManagementKey, Pin, PinPolicy, Slot, TouchPolicy};
-    use crate::ports::{DeviceFinder, KeyManager, ManagementKeyVerifier, PinVerifier, Signer};
+    use crate::ports::{DeviceFinder, KeyManager, ManagementKeyVerifier, Signer};
     use ed25519_dalek::SigningKey;
     use rand::rng;
     use rand::RngCore;
@@ -48,28 +48,6 @@ mod tests {
             result.unwrap_err(),
             YkadaError::Device(DeviceError::AuthenticationFailed { .. })
         ));
-    }
-
-    #[test]
-    fn test_pin_verification_success() {
-        let pin = Pin::default();
-        let mut device = MockYubiKey::new(pin.clone());
-        device.authenticated = true;
-
-        let result = PinVerifier::verify_pin(&mut device, &pin);
-        assert!(result.is_ok());
-        assert!(device.pin_verified);
-    }
-
-    #[test]
-    fn test_pin_verification_failure() {
-        let pin = Pin::default();
-        let wrong_pin = Pin::from_str("999999").unwrap();
-        let mut device = MockYubiKey::new(pin);
-
-        let result = PinVerifier::verify_pin(&mut device, &wrong_pin);
-        assert!(result.is_err());
-        assert!(!device.pin_verified);
     }
 
     #[test]

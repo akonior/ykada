@@ -170,7 +170,7 @@ impl DeviceFinder for MockDeviceFinder {
 }
 
 #[cfg(test)]
-mod tests3 {
+mod tests {
     use super::*;
     use crate::contract_tests_for;
     use crate::ports::contract_tests::yubikey_contract;

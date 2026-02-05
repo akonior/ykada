@@ -246,8 +246,24 @@ impl Signer for PivYubiKey {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "hardware-tests"))]
 mod tests {
+    use super::*;
+    use crate::contract_tests_for;
+    use crate::ports::contract_tests::yubikey_contract;
+
+    contract_tests_for!(
+        real_yubikey_contract,
+        make = || PivDeviceFinder.find_first().expect("YubiKey not found"),
+        tests = {
+            test_pin_verification_success => yubikey_contract::test_pin_verification_success,
+            test_pin_verification_failure => yubikey_contract::test_pin_verification_failure,
+        }
+    );
+}
+
+#[cfg(test)]
+mod tests_legacy {
     use super::*;
     use crate::model::{ManagementKey, PinPolicy, TouchPolicy};
     use ed25519_dalek::SigningKey;
@@ -262,44 +278,6 @@ mod tests {
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
         0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x09,
     ]);
-
-    #[test]
-    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
-    fn test_pin_verification_success() {
-        let finder = PivDeviceFinder;
-        let mut device = finder.find_first().expect("YubiKey not found");
-        let pin = Pin::default();
-
-        let result = device.verify_pin(&pin);
-        // May fail if PIN was changed, but structure should be correct
-        if result.is_err() {
-            // Check it's a PIN error, not some other error
-            assert!(matches!(
-                result.unwrap_err(),
-                YkadaError::Device(DeviceError::PinVerificationFailed { .. })
-                    | YkadaError::Device(DeviceError::InvalidPin { .. })
-            ));
-        } else {
-            // Success case
-            assert!(result.is_ok());
-        }
-    }
-
-    #[test]
-    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
-    fn test_pin_verification_failure() {
-        let finder = PivDeviceFinder;
-        let mut device = finder.find_first().expect("YubiKey not found");
-        let wrong_pin = Pin::from_str("999999").expect("Invalid PIN");
-
-        let result = device.verify_pin(&wrong_pin);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            YkadaError::Device(DeviceError::PinVerificationFailed { .. })
-                | YkadaError::Device(DeviceError::InvalidPin { .. })
-        ));
-    }
 
     #[test]
     #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests

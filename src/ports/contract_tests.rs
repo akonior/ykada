@@ -23,17 +23,20 @@ macro_rules! contract_tests_for {
 
 #[cfg(test)]
 pub mod yubikey_contract {
-    use crate::{
-        model::Pin,
-        ports::{PinVerifier, YubiKeyOps},
-    };
+    use crate::{error::DeviceError, model::Pin, ports::PinVerifier, YkadaError};
 
-    pub(crate) fn test_pin_verification_success(mut device: impl YubiKeyOps) {
+    pub(crate) fn test_pin_verification_success(mut device: impl PinVerifier) {
         assert!(device.verify_pin(&Pin::default()).is_ok());
     }
 
     pub(crate) fn test_pin_verification_failure(mut device: impl PinVerifier) {
         let wrong_pin = Pin::from_str("999999").unwrap();
-        assert!(device.verify_pin(&wrong_pin).is_err());
+
+        let result = device.verify_pin(&wrong_pin);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            YkadaError::Device(DeviceError::PinVerificationFailed { .. })
+        ));
     }
 }
