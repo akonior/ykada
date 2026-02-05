@@ -105,15 +105,6 @@ impl KeyManager for MockYubiKey {
             }));
         }
 
-        // Check if slot is already occupied
-        if self.keys.contains_key(&config.slot) {
-            return Err(YkadaError::KeyManagement(
-                KeyManagementError::SlotOccupied {
-                    slot: format!("{:?}", config.slot),
-                },
-            ));
-        }
-
         // Generate a random key for testing
         use ed25519_dalek::SecretKey;
         let mut secret_bytes = [0u8; 32];
@@ -190,6 +181,8 @@ mod tests {
             test_sign_key_not_found => yubikey_contract::test_sign_key_not_found,
             test_sign_invalid_pin => yubikey_contract::test_sign_invalid_pin,
             test_sign_success => yubikey_contract::test_sign_success,
+            test_generate_key_not_authenticated => yubikey_contract::test_generate_key_not_authenticated,
+            test_generate_key_success => yubikey_contract::test_generate_key_success,
         }
     );
 }

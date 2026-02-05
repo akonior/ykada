@@ -252,6 +252,12 @@ mod tests {
     use crate::contract_tests_for;
     use crate::ports::contract_tests::yubikey_contract;
 
+    #[test]
+    fn test_device_finder_success() {
+        let result = PivDeviceFinder.find_first();
+        assert!(result.is_ok(), "error: {:?}", result.err());
+    }
+
     contract_tests_for!(
         real_yubikey_contract,
         make = || PivDeviceFinder.find_first().expect("YubiKey not found"),
@@ -265,104 +271,8 @@ mod tests {
             test_sign_key_not_found => yubikey_contract::test_sign_key_not_found,
             test_sign_invalid_pin => yubikey_contract::test_sign_invalid_pin,
             test_sign_success => yubikey_contract::test_sign_success,
+            test_generate_key_not_authenticated => yubikey_contract::test_generate_key_not_authenticated,
+            test_generate_key_success => yubikey_contract::test_generate_key_success,
         }
     );
-}
-
-#[cfg(test)]
-mod tests_legacy {
-    use super::*;
-    use crate::model::ManagementKey;
-    use ed25519_dalek::SigningKey;
-    use std::convert::TryInto;
-
-    // These tests mirror the tests in adapters/tests.rs but use real YubiKey hardware
-    // They should have the same names and test the same scenarios to ensure
-    // that mock implementations accurately simulate real hardware behavior.
-    // All hardware tests are conditionally ignored unless --features hardware-tests is used.
-
-    const TESTING_MANAGEMENT_KEY: ManagementKey = ManagementKey::new([
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-        0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x09,
-    ]);
-
-    #[test]
-    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
-    fn test_generate_key_success() {
-        let finder = PivDeviceFinder;
-        let mut device = finder.find_first().expect("YubiKey not found");
-        device
-            .authenticate(Some(&TESTING_MANAGEMENT_KEY))
-            .expect("Authentication failed");
-
-        let config = KeyConfig::default();
-        let result = device.generate_key(config.clone());
-
-        // May fail if slot is already occupied
-        if result.is_ok() {
-            let verifying_key = result.unwrap();
-            assert_eq!(verifying_key.as_bytes().len(), 32);
-
-            // Verify we can sign with the generated key
-            let pin = Pin::default();
-            let data = b"test data";
-            let sign_result =
-                device.sign(data, config.slot, Algorithm::default_cardano(), Some(&pin));
-
-            if sign_result.is_ok() {
-                // Verify signature
-                let signature_bytes = sign_result.unwrap();
-                let sig_array: [u8; 64] = signature_bytes
-                    .try_into()
-                    .map_err(|_| "Invalid signature length")
-                    .expect("Invalid signature length");
-                let signature = ed25519_dalek::Signature::from_bytes(&sig_array);
-                verifying_key
-                    .verify_strict(data, &signature)
-                    .expect("Signature verification failed");
-            }
-        } else {
-            // Check if it's a slot occupied error (acceptable)
-            let err = result.unwrap_err();
-            assert!(matches!(
-                err,
-                YkadaError::KeyManagement(KeyManagementError::SlotOccupied { .. })
-                    | YkadaError::KeyManagement(KeyManagementError::StoreFailed { .. })
-            ));
-        }
-    }
-
-    #[test]
-    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
-    fn test_generate_key_not_authenticated() {
-        let finder = PivDeviceFinder;
-        let mut device = finder.find_first().expect("YubiKey not found");
-        // Don't authenticate
-
-        let config = KeyConfig::default();
-        let result = device.generate_key(config);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            YkadaError::Device(DeviceError::AuthenticationFailed { .. })
-        ));
-    }
-
-    #[test]
-    fn test_device_finder_success() {
-        let finder = PivDeviceFinder;
-        let result = finder.find_first();
-        // May succeed or fail depending on hardware availability
-        if result.is_ok() {
-            // Success case
-            assert!(result.is_ok());
-        } else {
-            // Should be NotFound error, not some other error
-            assert!(matches!(
-                result.unwrap_err(),
-                YkadaError::Device(DeviceError::NotFound)
-                    | YkadaError::Device(DeviceError::ConnectionFailed { .. })
-            ));
-        }
-    }
 }

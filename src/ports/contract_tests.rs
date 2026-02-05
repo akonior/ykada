@@ -163,4 +163,47 @@ pub mod yubikey_contract {
             .verify_strict(data, &signature)
             .expect("Signature verification failed");
     }
+
+    pub(crate) fn test_generate_key_not_authenticated(mut device: impl KeyManager) {
+        let config = KeyConfig::default();
+        let result = device.generate_key(config);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            YkadaError::Device(DeviceError::AuthenticationFailed { .. })
+        ));
+    }
+
+    pub(crate) fn test_generate_key_success(
+        mut device: impl KeyManager + ManagementKeyVerifier + Signer,
+    ) {
+        device
+            .authenticate(Some(&TESTING_MANAGEMENT_KEY))
+            .expect("Authentication failed");
+
+        let mut config = KeyConfig::default();
+        config.touch_policy = TouchPolicy::Never;
+        let result = device.generate_key(config.clone());
+
+        assert!(result.is_ok(), "error: {:?}", result.err());
+        let verifying_key = result.unwrap();
+        assert_eq!(verifying_key.as_bytes().len(), 32);
+
+        // Verify we can sign with the generated key
+        let pin = Pin::default();
+        let data = b"test data";
+        let sign_result = device.sign(data, config.slot, Algorithm::default_cardano(), Some(&pin));
+
+        assert!(sign_result.is_ok(), "error: {:?}", sign_result.err());
+        // Verify signature
+        let signature_bytes = sign_result.unwrap();
+        let sig_array: [u8; 64] = signature_bytes
+            .try_into()
+            .map_err(|_| "Invalid signature length")
+            .expect("Invalid signature length");
+        let signature = ed25519_dalek::Signature::from_bytes(&sig_array);
+        verifying_key
+            .verify_strict(data, &signature)
+            .expect("Signature verification failed");
+    }
 }

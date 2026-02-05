@@ -6,12 +6,9 @@
 #[cfg(test)]
 mod tests {
     use crate::adapters::mock_yubikey::{MockDeviceFinder, MockYubiKey};
-    use crate::error::{DeviceError, KeyManagementError, YkadaError};
+    use crate::error::{DeviceError, YkadaError};
     use crate::model::{Algorithm, Pin, PinPolicy, Slot, TouchPolicy};
     use crate::ports::{DeviceFinder, KeyManager, Signer};
-    use ed25519_dalek::SigningKey;
-    use rand::rng;
-    use rand::RngCore;
     use std::convert::TryInto;
 
     #[test]
@@ -63,47 +60,6 @@ mod tests {
         assert_eq!(verifying_key.as_bytes().len(), 32);
         // Verify key was stored in the slot
         assert!(device.keys.contains_key(&config.slot));
-    }
-
-    #[test]
-    fn test_generate_key_not_authenticated() {
-        let pin = Pin::default();
-        let mut device = MockYubiKey::new(pin);
-        device.authenticated = false;
-
-        use crate::ports::KeyConfig;
-        let config = KeyConfig::default();
-        let result = KeyManager::generate_key(&mut device, config);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            YkadaError::Device(DeviceError::AuthenticationFailed { .. })
-        ));
-    }
-
-    #[test]
-    fn test_generate_key_slot_occupied() {
-        let pin = Pin::default();
-        let mut device = MockYubiKey::new(pin);
-        device.authenticated = true;
-
-        use crate::ports::KeyConfig;
-        use ed25519_dalek::SecretKey;
-        let mut secret_bytes = [0u8; 32];
-        rng().fill_bytes(&mut secret_bytes);
-        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
-        let config = KeyConfig::default();
-
-        // Import a key to occupy the slot
-        KeyManager::import_key(&mut device, signing_key, config.clone()).unwrap();
-
-        // Try to generate a key in the same slot
-        let result = KeyManager::generate_key(&mut device, config);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            YkadaError::KeyManagement(KeyManagementError::SlotOccupied { .. })
-        ));
     }
 
     #[test]
