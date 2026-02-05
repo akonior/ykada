@@ -3,10 +3,12 @@
 //! This module provides high-level, convenient functions for common operations.
 
 use crate::adapters::PivDeviceFinder;
-use crate::model::ManagementKey;
+use crate::error::YkadaResult;
 use crate::ports::KeyConfig;
 use crate::use_cases::generate_key as generate_key_use_case;
 use ed25519_dalek::VerifyingKey;
+
+pub use crate::model::*;
 
 /// Generate a new Ed25519 keypair on the first available YubiKey
 ///
@@ -26,7 +28,7 @@ use ed25519_dalek::VerifyingKey;
 /// - No YubiKey device is found
 /// - Authentication fails
 /// - Key generation fails (e.g., slot already occupied)
-pub fn generate_key() -> crate::error::YkadaResult<VerifyingKey> {
+pub fn generate_key() -> YkadaResult<VerifyingKey> {
     generate_key_with_config(KeyConfig::default(), None)
 }
 
@@ -52,7 +54,18 @@ pub fn generate_key() -> crate::error::YkadaResult<VerifyingKey> {
 pub fn generate_key_with_config(
     config: KeyConfig,
     mgmt_key: Option<&ManagementKey>,
-) -> crate::error::YkadaResult<VerifyingKey> {
+) -> YkadaResult<VerifyingKey> {
     let finder = PivDeviceFinder;
     generate_key_use_case(&finder, config, mgmt_key)
 }
+
+// pub fn import_private_key_in_der_format(der: &[u8]) -> YkadaResult<VerifyingKey> {
+//     let signing_key =
+//         SigningKey::from_pkcs8_der(der).expect("Failed to parse DER as Ed25519 private key");
+
+//     debug!("Imported private key from DER: {:?}", signing_key);
+
+//     load_sk_to_yubikey(signing_key);
+
+//     debug!("Loaded private key to YubiKey");
+// }

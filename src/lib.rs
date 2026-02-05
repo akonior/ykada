@@ -11,16 +11,13 @@ use tracing::{debug, info};
 use ::yubikey::piv::{import_cv_key, sign_data};
 use ::yubikey::{Context, MgmKey, PinPolicy as YkPinPolicy, TouchPolicy as YkTouchPolicy, YubiKey};
 
-// Use model types and convert - this is the proper way going forward
-use crate::model::{Algorithm, Slot};
-
 use ed25519_dalek::{SecretKey, Signature, SigningKey, VerifyingKey};
 
 mod adapters;
 pub mod api;
 pub mod error;
 mod logic;
-pub mod model;
+mod model;
 pub mod ports;
 pub mod use_cases;
 
@@ -28,7 +25,7 @@ pub mod use_cases;
 pub use error::{YkadaError, YkadaResult};
 
 // Re-export public API
-pub use api::{generate_key, generate_key_with_config};
+pub use api::*;
 
 const DEFAULT_PIN: &[u8] = b"123456";
 const DEFAULT_SECRET_KEY: &SecretKey = &[0u8; 32];

@@ -4,6 +4,8 @@ use hex;
 use std::io::{self, Read, Write};
 use tracing::error;
 
+use ykada::api::{ManagementKey, PinPolicy, Slot, TouchPolicy};
+
 #[derive(Parser, Debug)]
 #[command(name = "ykada")]
 #[command(about = "YubiKey Cardano wallet", version)]
@@ -53,13 +55,13 @@ pub enum SlotArg {
     CardAuthentication,
 }
 
-impl From<SlotArg> for ykada::model::Slot {
+impl From<SlotArg> for Slot {
     fn from(arg: SlotArg) -> Self {
         match arg {
-            SlotArg::Authentication => ykada::model::Slot::Authentication,
-            SlotArg::Signature => ykada::model::Slot::Signature,
-            SlotArg::KeyManagement => ykada::model::Slot::KeyManagement,
-            SlotArg::CardAuthentication => ykada::model::Slot::CardAuthentication,
+            SlotArg::Authentication => Slot::Authentication,
+            SlotArg::Signature => Slot::Signature,
+            SlotArg::KeyManagement => Slot::KeyManagement,
+            SlotArg::CardAuthentication => Slot::CardAuthentication,
         }
     }
 }
@@ -71,12 +73,12 @@ pub enum PinPolicyArg {
     Always,
 }
 
-impl From<PinPolicyArg> for ykada::model::PinPolicy {
+impl From<PinPolicyArg> for PinPolicy {
     fn from(arg: PinPolicyArg) -> Self {
         match arg {
-            PinPolicyArg::Never => ykada::model::PinPolicy::Never,
-            PinPolicyArg::Once => ykada::model::PinPolicy::Once,
-            PinPolicyArg::Always => ykada::model::PinPolicy::Always,
+            PinPolicyArg::Never => PinPolicy::Never,
+            PinPolicyArg::Once => PinPolicy::Once,
+            PinPolicyArg::Always => PinPolicy::Always,
         }
     }
 }
@@ -88,12 +90,12 @@ pub enum TouchPolicyArg {
     Cached,
 }
 
-impl From<TouchPolicyArg> for ykada::model::TouchPolicy {
+impl From<TouchPolicyArg> for TouchPolicy {
     fn from(arg: TouchPolicyArg) -> Self {
         match arg {
-            TouchPolicyArg::Never => ykada::model::TouchPolicy::Never,
-            TouchPolicyArg::Always => ykada::model::TouchPolicy::Always,
-            TouchPolicyArg::Cached => ykada::model::TouchPolicy::Cached,
+            TouchPolicyArg::Never => TouchPolicy::Never,
+            TouchPolicyArg::Always => TouchPolicy::Always,
+            TouchPolicyArg::Cached => TouchPolicy::Cached,
         }
     }
 }
@@ -138,7 +140,7 @@ fn main() -> anyhow::Result<()> {
                 let key_bytes = hex::decode(key_hex)
                     .map_err(|e| anyhow::anyhow!("Invalid management key hex: {}", e))?;
                 Some(
-                    ykada::model::ManagementKey::from_slice(&key_bytes)
+                    ManagementKey::from_slice(&key_bytes)
                         .map_err(|e| anyhow::anyhow!("Invalid management key: {}", e))?,
                 )
             } else {
