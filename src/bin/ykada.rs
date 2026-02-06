@@ -6,7 +6,7 @@ use std::io::{self, Read, Write};
 use tracing::error;
 
 use ykada::{
-    api::{ManagementKey, PinPolicy, Slot, TouchPolicy},
+    api::{PinPolicy, Slot, TouchPolicy},
     DerPrivateKey,
 };
 
@@ -25,21 +25,8 @@ pub struct Cli {
 pub enum Commands {
     /// Load a private key (DER) into YubiKey
     ImportKey {
-        /// PIV slot to store the key (9a=Authentication, 9c=Signature, 9d=KeyManagement, 9e=CardAuthentication)
-        #[arg(long, default_value = "signature")]
-        slot: SlotArg,
-
-        /// PIN policy (never, once, always)
-        #[arg(long, default_value = "always")]
-        pin_policy: PinPolicyArg,
-
-        /// Touch policy (never, always, cached)
-        #[arg(long, default_value = "always")]
-        touch_policy: TouchPolicyArg,
-
-        /// Management key in hex format (48 hex chars = 24 bytes). Uses default if not provided
-        #[arg(long)]
-        mgmt_key: Option<String>,
+        #[command(flatten)]
+        key_options: KeyOptions,
     },
 
     /// Sign data provided via stdin
@@ -47,24 +34,30 @@ pub enum Commands {
 
     /// Generate a new Ed25519 keypair on the YubiKey (Cardano only)
     Generate {
-        /// PIV slot to store the key (9a=Authentication, 9c=Signature, 9d=KeyManagement, 9e=CardAuthentication)
-        #[arg(long, default_value = "signature")]
-        slot: SlotArg,
-
-        /// PIN policy (never, once, always)
-        #[arg(long, default_value = "always")]
-        pin_policy: PinPolicyArg,
-
-        /// Touch policy (never, always, cached)
-        #[arg(long, default_value = "always")]
-        touch_policy: TouchPolicyArg,
-
-        /// Management key in hex format (48 hex chars = 24 bytes). Uses default if not provided
-        #[arg(long)]
-        mgmt_key: Option<String>,
+        #[command(flatten)]
+        key_options: KeyOptions,
     },
 
     Info,
+}
+
+#[derive(clap::Args, Debug)]
+pub struct KeyOptions {
+    /// PIV slot to store the key (9a=Authentication, 9c=Signature, 9d=KeyManagement, 9e=CardAuthentication)
+    #[arg(long, default_value = "signature")]
+    pub slot: SlotArg,
+
+    /// PIN policy (never, once, always)
+    #[arg(long, default_value = "always")]
+    pub pin_policy: PinPolicyArg,
+
+    /// Touch policy (never, always, cached)
+    #[arg(long, default_value = "always")]
+    pub touch_policy: TouchPolicyArg,
+
+    /// Management key in hex format (48 hex chars = 24 bytes). Uses default if not provided
+    #[arg(long)]
+    pub mgmt_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -128,28 +121,14 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     match cli.command {
-        Commands::ImportKey {
-            slot,
-            pin_policy,
-            touch_policy,
-            mgmt_key,
-        } => {
+        Commands::ImportKey { key_options } => {
             let config = ykada::ports::KeyConfig {
-                slot: slot.into(),
-                pin_policy: pin_policy.into(),
-                touch_policy: touch_policy.into(),
+                slot: key_options.slot.into(),
+                pin_policy: key_options.pin_policy.into(),
+                touch_policy: key_options.touch_policy.into(),
             };
 
-            let mgmt_key_opt = if let Some(key_hex) = mgmt_key {
-                let key_bytes = hex::decode(key_hex)
-                    .map_err(|e| anyhow::anyhow!("Invalid management key hex: {}", e))?;
-                Some(
-                    ManagementKey::from_slice(&key_bytes)
-                        .map_err(|e| anyhow::anyhow!("Invalid management key: {}", e))?,
-                )
-            } else {
-                None
-            };
+            let mgmt_key_opt = key_options.mgmt_key.map(|s| s.try_into()).transpose()?;
 
             let mut buf = Vec::new();
             io::stdin().read_to_end(&mut buf)?;
@@ -164,28 +143,14 @@ fn main() -> anyhow::Result<()> {
             let signature = ykada::sign_bin_data(&data);
             std::io::stdout().write_all(&signature)?;
         }
-        Commands::Generate {
-            slot,
-            pin_policy,
-            touch_policy,
-            mgmt_key,
-        } => {
+        Commands::Generate { key_options } => {
             let config = ykada::ports::KeyConfig {
-                slot: slot.into(),
-                pin_policy: pin_policy.into(),
-                touch_policy: touch_policy.into(),
+                slot: key_options.slot.into(),
+                pin_policy: key_options.pin_policy.into(),
+                touch_policy: key_options.touch_policy.into(),
             };
 
-            let mgmt_key_opt = if let Some(key_hex) = mgmt_key {
-                let key_bytes = hex::decode(key_hex)
-                    .map_err(|e| anyhow::anyhow!("Invalid management key hex: {}", e))?;
-                Some(
-                    ManagementKey::from_slice(&key_bytes)
-                        .map_err(|e| anyhow::anyhow!("Invalid management key: {}", e))?,
-                )
-            } else {
-                None
-            };
+            let mgmt_key_opt = key_options.mgmt_key.map(|s| s.try_into()).transpose()?;
 
             match ykada::generate_key_with_config(config, mgmt_key_opt.as_ref()) {
                 Ok(verifying_key) => {

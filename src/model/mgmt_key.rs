@@ -95,6 +95,17 @@ impl TryFrom<ManagementKey> for MgmKey {
     }
 }
 
+impl TryFrom<String> for ManagementKey {
+    type Error = ManagementKeyError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        let bytes = hex::decode(&s).map_err(|e| ManagementKeyError::InvalidMaterial {
+            reason: e.to_string(),
+        })?;
+        ManagementKey::from_slice(&bytes)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
