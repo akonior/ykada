@@ -185,144 +185,20 @@ mod tests {
 
     #[test]
     #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
-    fn test_cli_generate_parameter() {
-        // Check if YubiKey is available
-        let mut cmd = Command::cargo_bin("ykada").unwrap();
-        let check_result = cmd.arg("generate").output();
-
-        if let Ok(output) = check_result {
-            // If device not found, skip test
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            if stderr.contains("not found") || stderr.contains("NotFound") {
-                return;
-            }
-        }
-
-        let mut cmd = Command::cargo_bin("ykada").unwrap();
-        let assert = cmd
-            .arg("generate")
-            .arg("--slot")
-            .arg("signature")
-            .arg("--pin-policy")
-            .arg("always")
-            .arg("--touch-policy")
-            .arg("always")
-            .arg("--mgmt-key")
-            .arg("010203040506070801020304050607080102030405060709")
-            .assert();
-
-        // May fail if slot is occupied or authentication fails, but should output proper error
-        let output = assert.get_output();
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-
-        println!("stdout: {}", stdout);
-        println!("stderr: {}", stderr);
-
-        if output.status.success() {
-            // Verify output is hex-encoded public key (64 hex chars = 32 bytes)
-            let trimmed = stdout.trim();
-            assert_eq!(
-                trimmed.len(),
-                64,
-                "Public key should be 64 hex characters (32 bytes)"
-            );
-            assert!(
-                trimmed.chars().all(|c| c.is_ascii_hexdigit()),
-                "Output should be valid hex"
-            );
-        } else {
-            // Should fail gracefully with proper error message
-            // Accept various error messages that indicate proper error handling
-            let error_indicators = [
-                "Failed to generate key",
-                "Authentication",
-                "Slot",
-                "not found",
-                "NotFound",
-                "authentication failed",
-            ];
-            assert!(
-                error_indicators
-                    .iter()
-                    .any(|&indicator| stderr.contains(indicator)),
-                "Should fail gracefully with proper error message. stderr: {}",
-                stderr
-            );
-        }
-    }
-
-    #[test]
-    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
-    fn test_cli_generate_with_defaults() {
-        // Check if YubiKey is available
-        let mut cmd = Command::cargo_bin("ykada").unwrap();
-        let check_result = cmd.arg("generate").output();
-
-        if let Ok(output) = check_result {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            if stderr.contains("not found") || stderr.contains("NotFound") {
-                return;
-            }
-        }
-
-        let mut cmd = Command::cargo_bin("ykada").unwrap();
-        let assert = cmd.arg("generate").assert();
-
-        let output = assert.get_output();
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        if output.status.success() {
-            // Verify output is hex-encoded public key (64 hex chars = 32 bytes)
-            let trimmed = stdout.trim();
-            assert_eq!(
-                trimmed.len(),
-                64,
-                "Public key should be 64 hex characters (32 bytes)"
-            );
-        }
-    }
-
-    #[test]
-    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
-    fn test_cli_generate_with_custom_mgmt_key() {
-        // Test with a dummy management key (48 hex chars = 24 bytes)
-        let dummy_mgmt_key = "0".repeat(48);
+    fn test_cli_generate() {
         let mut cmd = Command::cargo_bin("ykada").unwrap();
         let result = cmd
             .arg("generate")
             .arg("--mgmt-key")
-            .arg(&dummy_mgmt_key)
+            .arg("010203040506070801020304050607080102030405060709")
             .assert();
 
-        // May succeed or fail depending on whether the key is correct
-        // But should not crash - just verify it doesn't panic
         let output = result.get_output();
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
 
-        if output.status.success() {
-            // If succeeded, verify output is valid hex
-            let trimmed = stdout.trim();
-            assert_eq!(trimmed.len(), 64, "Public key should be 64 hex characters");
-        } else {
-            // If failed, should have a proper error message (check both stdout and stderr)
-            let combined_output = format!("{} {}", stdout, stderr);
-            let error_indicators = [
-                "Failed to generate key",
-                "Authentication",
-                "authentication failed",
-                "Invalid management key",
-                "ERROR",
-            ];
-            assert!(
-                error_indicators
-                    .iter()
-                    .any(|&indicator| combined_output.contains(indicator)),
-                "Should fail gracefully with proper error message. stdout: {}, stderr: {}",
-                stdout,
-                stderr
-            );
-        }
+        println!("stdout: {}", stdout);
+
+        let trimmed = stdout.trim();
+        assert_eq!(trimmed.len(), 64, "Public key should be 64 hex characters");
     }
 }
