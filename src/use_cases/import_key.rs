@@ -16,15 +16,13 @@ where
     F: DeviceFinder,
     F::Device: KeyManager + ManagementKeyVerifier,
 {
-    let d: &[u8] = der.0.as_slice();
-    let signing_key =
-        SigningKey::from_pkcs8_der(d).expect("Failed to parse DER as Ed25519 private key");
+    let signing_key = SigningKey::from_pkcs8_der(der.0.as_slice())?;
 
     debug!("Imported private key from DER: {:?}", signing_key);
 
     let mut device = finder.find_first()?;
 
-    device.authenticate(mgmt_key).unwrap();
+    device.authenticate(mgmt_key)?;
 
     device.import_key(signing_key.clone(), config)?;
 
