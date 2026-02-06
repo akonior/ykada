@@ -1,7 +1,7 @@
 //! KeyManager trait - capability to manage keys (import, generate)
 
 use crate::error::YkadaResult;
-use crate::model::{Algorithm, PinPolicy, Slot, TouchPolicy};
+use crate::model::{PinPolicy, Slot, TouchPolicy};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 
 /// Configuration for key import/generation
@@ -9,8 +9,6 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 pub struct KeyConfig {
     /// Slot to store the key in
     pub slot: Slot,
-    /// Algorithm to use
-    pub algorithm: Algorithm,
     /// PIN policy for key usage
     pub pin_policy: PinPolicy,
     /// Touch policy for key usage
@@ -21,7 +19,6 @@ impl Default for KeyConfig {
     fn default() -> Self {
         Self {
             slot: Slot::default_signing(),
-            algorithm: Algorithm::default_cardano(),
             pin_policy: PinPolicy::recommended_cardano(),
             touch_policy: TouchPolicy::recommended_cardano(),
         }

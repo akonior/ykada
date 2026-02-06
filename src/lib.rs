@@ -3,7 +3,6 @@
 
 use std::convert::TryInto;
 
-use ed25519_dalek::pkcs8::DecodePrivateKey;
 use tracing::{debug, info};
 
 // Import yubikey crate types - these are used by legacy functions
@@ -11,16 +10,13 @@ use tracing::{debug, info};
 use ::yubikey::piv::{import_cv_key, sign_data};
 use ::yubikey::{Context, MgmKey, PinPolicy as YkPinPolicy, TouchPolicy as YkTouchPolicy, YubiKey};
 
-// Use model types and convert - this is the proper way going forward
-use crate::model::{Algorithm, Slot};
-
 use ed25519_dalek::{SecretKey, Signature, SigningKey, VerifyingKey};
 
-pub mod adapters;
+mod adapters;
 pub mod api;
 pub mod error;
-pub mod logic;
-pub mod model;
+mod logic;
+mod model;
 pub mod ports;
 pub mod use_cases;
 
@@ -28,7 +24,7 @@ pub mod use_cases;
 pub use error::{YkadaError, YkadaResult};
 
 // Re-export public API
-pub use api::{generate_key, generate_key_with_config};
+pub use api::*;
 
 const DEFAULT_PIN: &[u8] = b"123456";
 const DEFAULT_SECRET_KEY: &SecretKey = &[0u8; 32];
@@ -100,18 +96,6 @@ pub fn sign_raw_data(data: &[u8]) -> Signature {
         .expect("signature must be 64 bytes");
 
     sig_bytes.into()
-}
-
-pub fn load_der_to_yubikey(_der: &[u8]) {
-    // Parse DER and extract EdDSA (Ed25519) private key
-    let signing_key =
-        SigningKey::from_pkcs8_der(_der).expect("Failed to parse DER as Ed25519 private key");
-
-    debug!("Imported private key from DER: {:?}", signing_key);
-
-    load_sk_to_yubikey(signing_key);
-
-    debug!("Loaded private key to YubiKey");
 }
 
 pub fn sign_bin_data(buf: &[u8]) -> [u8; Signature::BYTE_SIZE] {

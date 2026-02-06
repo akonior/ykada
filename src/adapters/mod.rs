@@ -6,4 +6,4 @@ mod yubikey_piv;
 pub mod fake_yubikey;
 
 // Re-export for convenience
-pub use yubikey_piv::{PivDeviceFinder, PivYubiKey};
+pub use yubikey_piv::PivDeviceFinder;

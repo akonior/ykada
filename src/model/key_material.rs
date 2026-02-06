@@ -156,6 +156,9 @@ impl From<SigningKey> for KeyPair {
     }
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub struct DerPrivateKey(pub Vec<u8>);
+
 /// Errors that can occur when working with key material
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum KeyMaterialError {

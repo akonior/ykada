@@ -11,7 +11,7 @@ mod policy;
 mod slot;
 
 pub use algorithm::{Algorithm, AlgorithmError};
-pub use key_material::{KeyMaterialError, KeyPair, PrivateKey, PublicKey};
+pub use key_material::{DerPrivateKey, KeyMaterialError, KeyPair, PrivateKey, PublicKey};
 pub use mgmt_key::{ManagementKey, ManagementKeyError};
 pub use pin::{Pin, PinError};
 pub use policy::{PinPolicy, PolicyError, TouchPolicy};
