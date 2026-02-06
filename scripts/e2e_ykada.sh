@@ -35,7 +35,7 @@ if [[ ! -x "$RELEASE_BIN" ]]; then
 fi
 
 step "Loading private key (sk.der) into YubiKey"
-cat "$TMPDIR"/sk.der | "$RELEASE_BIN" import-key
+cat "$TMPDIR"/sk.der | "$RELEASE_BIN" import-key --touch-policy never --mgmt-key 010203040506070801020304050607080102030405060709
 ok "Private key loaded into YubiKey"
 
 step "Preparing example message to sign"

@@ -5,7 +5,10 @@
 use crate::adapters::PivDeviceFinder;
 use crate::error::YkadaResult;
 use crate::ports::KeyConfig;
-use crate::use_cases::generate_key as generate_key_use_case;
+use crate::use_cases::{
+    generate_key as generate_key_use_case,
+    import_private_key_in_der_format as import_private_key_in_der_format_use_case,
+};
 use ed25519_dalek::VerifyingKey;
 
 pub use crate::model::*;
@@ -59,13 +62,11 @@ pub fn generate_key_with_config(
     generate_key_use_case(&finder, config, mgmt_key)
 }
 
-// pub fn import_private_key_in_der_format(der: &[u8]) -> YkadaResult<VerifyingKey> {
-//     let signing_key =
-//         SigningKey::from_pkcs8_der(der).expect("Failed to parse DER as Ed25519 private key");
-
-//     debug!("Imported private key from DER: {:?}", signing_key);
-
-//     load_sk_to_yubikey(signing_key);
-
-//     debug!("Loaded private key to YubiKey");
-// }
+pub fn import_private_key_in_der_format(
+    der: DerPrivateKey,
+    config: KeyConfig,
+    mgmt_key: Option<&ManagementKey>,
+) -> YkadaResult<VerifyingKey> {
+    let finder = PivDeviceFinder;
+    import_private_key_in_der_format_use_case(&finder, der, config, mgmt_key)
+}

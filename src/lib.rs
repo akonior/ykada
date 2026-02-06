@@ -99,18 +99,6 @@ pub fn sign_raw_data(data: &[u8]) -> Signature {
     sig_bytes.into()
 }
 
-pub fn load_der_to_yubikey(_der: &[u8]) {
-    // Parse DER and extract EdDSA (Ed25519) private key
-    let signing_key =
-        SigningKey::from_pkcs8_der(_der).expect("Failed to parse DER as Ed25519 private key");
-
-    debug!("Imported private key from DER: {:?}", signing_key);
-
-    load_sk_to_yubikey(signing_key);
-
-    debug!("Loaded private key to YubiKey");
-}
-
 pub fn sign_bin_data(buf: &[u8]) -> [u8; Signature::BYTE_SIZE] {
     let signature = sign_raw_data(buf);
     debug!("Signed data: {:?}", signature);

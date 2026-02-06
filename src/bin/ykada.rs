@@ -1,10 +1,14 @@
+use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
 use clap_verbosity_flag::{Verbosity, WarnLevel};
 use hex;
 use std::io::{self, Read, Write};
 use tracing::error;
 
-use ykada::api::{ManagementKey, PinPolicy, Slot, TouchPolicy};
+use ykada::{
+    api::{ManagementKey, PinPolicy, Slot, TouchPolicy},
+    DerPrivateKey,
+};
 
 #[derive(Parser, Debug)]
 #[command(name = "ykada")]
@@ -20,7 +24,23 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Load a private key (DER) into YubiKey
-    ImportKey,
+    ImportKey {
+        /// PIV slot to store the key (9a=Authentication, 9c=Signature, 9d=KeyManagement, 9e=CardAuthentication)
+        #[arg(long, default_value = "signature")]
+        slot: SlotArg,
+
+        /// PIN policy (never, once, always)
+        #[arg(long, default_value = "always")]
+        pin_policy: PinPolicyArg,
+
+        /// Touch policy (never, always, cached)
+        #[arg(long, default_value = "always")]
+        touch_policy: TouchPolicyArg,
+
+        /// Management key in hex format (48 hex chars = 24 bytes). Uses default if not provided
+        #[arg(long)]
+        mgmt_key: Option<String>,
+    },
 
     /// Sign data provided via stdin
     Sign,
@@ -108,20 +128,40 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     match cli.command {
-        Commands::ImportKey => {
-            // read DER from stdin
+        Commands::ImportKey {
+            slot,
+            pin_policy,
+            touch_policy,
+            mgmt_key,
+        } => {
+            let config = ykada::ports::KeyConfig {
+                slot: slot.into(),
+                pin_policy: pin_policy.into(),
+                touch_policy: touch_policy.into(),
+            };
+
+            let mgmt_key_opt = if let Some(key_hex) = mgmt_key {
+                let key_bytes = hex::decode(key_hex)
+                    .map_err(|e| anyhow::anyhow!("Invalid management key hex: {}", e))?;
+                Some(
+                    ManagementKey::from_slice(&key_bytes)
+                        .map_err(|e| anyhow::anyhow!("Invalid management key: {}", e))?,
+                )
+            } else {
+                None
+            };
+
             let mut buf = Vec::new();
             io::stdin().read_to_end(&mut buf)?;
-            ykada::load_der_to_yubikey(&buf);
+            let der_key = DerPrivateKey(buf);
+            ykada::import_private_key_in_der_format(der_key, config, mgmt_key_opt.as_ref())
+                .context("failed to load DER private key into YubiKey")?;
         }
 
         Commands::Sign => {
-            // read data to sign
             let mut data = Vec::new();
             io::stdin().read_to_end(&mut data)?;
-            // println!("Signing {} bytes using yubikey", data.len());
             let signature = ykada::sign_bin_data(&data);
-            // println!("Signature: {:?}", signature);
             std::io::stdout().write_all(&signature)?;
         }
         Commands::Generate {
