@@ -3,7 +3,6 @@
 
 use std::convert::TryInto;
 
-use ed25519_dalek::pkcs8::DecodePrivateKey;
 use tracing::{debug, info};
 
 // Import yubikey crate types - these are used by legacy functions
