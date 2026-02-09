@@ -3,9 +3,8 @@ use crate::error::YkadaResult;
 pub use crate::model::*;
 use crate::ports::KeyConfig;
 use crate::use_cases::{
-    generate_key as generate_key_use_case,
-    import_private_key_from_seed_phrase as import_private_key_from_seed_phrase_use_case,
-    import_private_key_in_der_format as import_private_key_in_der_format_use_case,
+    generate_key_use_case, import_private_key_from_seed_phrase_use_case,
+    import_private_key_in_der_format_use_case,
 };
 
 pub fn generate_key() -> YkadaResult<Ed25519PublicKey> {

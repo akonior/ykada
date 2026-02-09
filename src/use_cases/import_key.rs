@@ -6,7 +6,7 @@ use tracing::debug;
 use crate::ports::{DeviceFinder, KeyManager};
 use crate::{DerPrivateKey, Ed25519PrivateKey, Ed25519PublicKey, ManagementKey, YkadaResult};
 
-pub fn import_private_key_in_der_format<F>(
+pub fn import_private_key_in_der_format_use_case<F>(
     finder: &F,
     der: DerPrivateKey,
     config: KeyConfig,
@@ -62,7 +62,8 @@ mod tests {
             1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 9,
         ]);
 
-        let result = import_private_key_in_der_format(&finder, der_key, config, Some(&mgmt_key));
+        let result =
+            import_private_key_in_der_format_use_case(&finder, der_key, config, Some(&mgmt_key));
 
         assert!(result.is_ok(), "error: {:?}", result.err());
         let verifying_key = result.unwrap();
