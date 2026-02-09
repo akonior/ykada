@@ -1,6 +1,7 @@
 //! Cardano key derivation using BIP32-Ed25519 (CIP-1852) and Icarus master key generation (CIP-3)
 
 use ed25519_bip32::{DerivationScheme, XPrv};
+use ed25519_dalek::SecretKey;
 use pbkdf2::pbkdf2_hmac;
 use sha2::Sha512;
 use thiserror::Error;
@@ -103,13 +104,12 @@ impl CardanoKey {
     /// let key = CardanoKey::from_seed_phrase(&seed, "").unwrap();
     /// let piv_key = key.to_piv_key();
     /// ```
-    pub fn to_piv_key(&self) -> crate::model::PivEd25519Key {
+    pub fn to_piv_key(&self) -> SecretKey {
         let extended_secret = self.0.extended_secret_key_bytes();
         // Extract left 32 bytes (kL scalar)
         let mut k_l = [0u8; 32];
         k_l.copy_from_slice(&extended_secret[..32]);
-        crate::model::PivEd25519Key::from_slice(&k_l)
-            .expect("kL extraction always produces 32 bytes")
+        k_l
     }
 
     /// Get the VerifyingKey corresponding to this CardanoKey's public key
@@ -285,7 +285,7 @@ mod tests {
 
         // Reconstruct XPrv from kL + kR + chain code
         let mut reconstructed_extended = [0u8; 64];
-        reconstructed_extended[..32].copy_from_slice(piv_key.as_array());
+        reconstructed_extended[..32].copy_from_slice(&piv_key);
         reconstructed_extended[32..].copy_from_slice(&extended_secret[32..64]);
 
         let reconstructed_xprv =

@@ -6,7 +6,7 @@
 #[cfg(test)]
 use crate::error::{DeviceError, KeyManagementError, YkadaError, YkadaResult};
 #[cfg(test)]
-use crate::model::{Algorithm, ManagementKey, Pin, PivEd25519Key, Slot};
+use crate::model::{Algorithm, ManagementKey, Pin, Slot};
 #[cfg(test)]
 use crate::ports::{
     DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
@@ -116,39 +116,6 @@ impl KeyManager for FakeYubiKey {
         // Store the generated key in the slot
         self.keys.insert(config.slot, (signing_key, verifying_key));
         Ok(verifying_key)
-    }
-
-    fn import_cv_key(&mut self, key: PivEd25519Key, config: KeyConfig) -> YkadaResult<()> {
-        if !self.authenticated {
-            return Err(YkadaError::Device(DeviceError::AuthenticationFailed {
-                reason: "Not authenticated".to_string(),
-            }));
-        }
-
-        if self.keys.contains_key(&config.slot) {
-            return Err(YkadaError::KeyManagement(
-                KeyManagementError::SlotOccupied {
-                    slot: format!("{:?}", config.slot),
-                },
-            ));
-        }
-
-        // Compute public key using ed25519-bip32 (CIP-3 reference implementation)
-        use ed25519_bip32::XPrv;
-        let mut extended_secret = [0u8; 64];
-        extended_secret[..32].copy_from_slice(key.as_array());
-        let dummy_chain_code = [0u8; 32];
-        let xprv = XPrv::from_extended_and_chaincode(&extended_secret, &dummy_chain_code);
-        let xpub = xprv.public();
-        let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(xpub.public_key_bytes())
-            .expect("XPub public key is valid Ed25519");
-
-        // Store SigningKey for signing operations
-        use ed25519_dalek::SecretKey;
-        let signing_key = SigningKey::from_bytes(&SecretKey::from(*key.as_array()));
-
-        self.keys.insert(config.slot, (signing_key, verifying_key));
-        Ok(())
     }
 }
 

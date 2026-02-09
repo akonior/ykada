@@ -74,7 +74,7 @@ where
     device.authenticate(mgmt_key)?;
 
     // Import the key
-    device.import_cv_key(piv_key, config)?;
+    device.import_key(piv_key, config)?;
 
     debug!("Key imported successfully");
     Ok(child_key.verifying_key())

@@ -235,7 +235,7 @@ pub mod yubikey_contract {
         };
 
         device
-            .import_cv_key(piv_key, config)
+            .import_key(piv_key, config)
             .expect("Failed to import key");
     }
 }

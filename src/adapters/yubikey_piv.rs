@@ -4,11 +4,11 @@
 //! using the yubikey crate's PIV functionality.
 
 use crate::error::{CryptoError, DeviceError, KeyManagementError, YkadaError, YkadaResult};
-use crate::model::{Algorithm, ManagementKey, ManagementKeyError, Pin, PivEd25519Key, Slot};
+use crate::model::{Algorithm, ManagementKey, ManagementKeyError, Pin, Slot};
 use crate::ports::{
     DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
-use ed25519_dalek::{SecretKey, SigningKey, VerifyingKey};
+use ed25519_dalek::{SecretKey, VerifyingKey};
 use std::convert::TryInto;
 use tracing::{debug, info};
 use yubikey::piv::{generate, import_cv_key, sign_data};
@@ -205,38 +205,6 @@ impl KeyManager for PivYubiKey {
                 format: format!("Invalid Ed25519 public key: {}", e),
             })
         })
-    }
-
-    fn import_cv_key(&mut self, key: PivEd25519Key, config: KeyConfig) -> YkadaResult<()> {
-        self.ensure_authenticated()?;
-
-        let algorithm = Algorithm::default_cardano();
-        let slot_id = config.slot.to_yubikey_slot_id();
-
-        debug!("Importing CV key (32 bytes) to slot: {:?}", config.slot);
-        debug!("Algorithm: {:?}", algorithm);
-        debug!(
-            "Policies: PIN={:?}, Touch={:?}",
-            config.pin_policy, config.touch_policy
-        );
-
-        import_cv_key(
-            &mut self.device,
-            slot_id,
-            algorithm.to_yubikey_algorithm_id(),
-            key.as_bytes(),
-            config.touch_policy.to_yubikey_touch_policy(),
-            config.pin_policy.to_yubikey_pin_policy(),
-        )
-        .map_err(|e| {
-            YkadaError::KeyManagement(KeyManagementError::StoreFailed {
-                destination: format!("slot {:?}", config.slot),
-                reason: format!("Failed to import CV key: {}", e),
-            })
-        })?;
-
-        info!("CV key imported successfully to slot {:?}", config.slot);
-        Ok(())
     }
 }
 
