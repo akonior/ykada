@@ -8,6 +8,7 @@ mod key_material;
 mod mgmt_key;
 mod pin;
 mod policy;
+mod seed_phrase;
 mod slot;
 
 pub use algorithm::{Algorithm, AlgorithmError};
