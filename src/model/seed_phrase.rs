@@ -57,4 +57,19 @@ mod tests {
         let result = SeedPhrase::try_from(phrase);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test2() {
+        let phrase = "cash antique chimney egg enact blast embody ecology dust fiction hope black crisp thunder tiny fame mixture object text boil odor minor ordinary deer";
+        let result = SeedPhrase::try_from(phrase);
+        assert!(result.is_ok(), "error: {:?}", result.err());
+
+        let entropy = result.unwrap().entropy();
+        assert_eq!(entropy.len(), 32);
+        assert_eq!(
+            entropy,
+            hex::decode("23413ca02364962ed21a30444ab9b58b733bc3389a938e53037e8c89931a6711")
+                .unwrap()
+        );
+    }
 }
