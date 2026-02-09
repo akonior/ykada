@@ -4,6 +4,7 @@
 //! These are pure data structures with validation logic.
 
 mod algorithm;
+mod derivation_path;
 mod key_material;
 mod mgmt_key;
 mod pin;

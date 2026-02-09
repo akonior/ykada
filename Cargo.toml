@@ -36,6 +36,7 @@ yubikey = { git = "https://github.com/mproofs/yubikey.rs", branch = "curve_25519
 
 # BIP39/BIP32 dependencies
 bip39 = "2.0"
+bip32 = "0.5"
 pbkdf2 = "0.12"
 hmac = "0.12"
 sha2 = "0.10"
