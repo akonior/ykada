@@ -26,7 +26,7 @@ pub fn import_private_key_in_der_format(
     der: DerPrivateKey,
     config: KeyConfig,
     mgmt_key: Option<&ManagementKey>,
-) -> YkadaResult<VerifyingKey> {
+) -> YkadaResult<Ed25519PublicKey> {
     let finder = PivDeviceFinder;
     import_private_key_in_der_format_use_case(&finder, der, config, mgmt_key)
 }
