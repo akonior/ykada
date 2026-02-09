@@ -1,6 +1,6 @@
 use crate::model::{CardanoKey, DerivationPath, SeedPhrase};
 use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
-use crate::{ManagementKey, YkadaResult};
+use crate::{Ed25519PublicKey, ManagementKey, YkadaResult};
 use tracing::debug;
 
 pub fn import_private_key_from_seed_phrase<F>(
@@ -10,7 +10,7 @@ pub fn import_private_key_from_seed_phrase<F>(
     path: Option<&str>,
     config: KeyConfig,
     mgmt_key: Option<&ManagementKey>,
-) -> YkadaResult<ed25519_dalek::VerifyingKey>
+) -> YkadaResult<Ed25519PublicKey>
 where
     F: DeviceFinder,
     F::Device: KeyManager + ManagementKeyVerifier,
@@ -38,7 +38,7 @@ where
     device.import_key(private_key, config)?;
 
     debug!("Key imported successfully");
-    Ok(derived_cardano_key.verifying_key())
+    Ok(derived_cardano_key.verifying_key().into())
 }
 
 #[cfg(test)]

@@ -37,7 +37,7 @@ pub fn import_private_key_from_seed_phrase(
     path: Option<&str>,
     config: KeyConfig,
     mgmt_key: Option<&ManagementKey>,
-) -> YkadaResult<VerifyingKey> {
+) -> YkadaResult<Ed25519PublicKey> {
     let finder = PivDeviceFinder;
     import_private_key_from_seed_phrase_use_case(
         &finder,
