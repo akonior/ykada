@@ -1,6 +1,6 @@
 use crate::model::{CardanoKey, DerivationPath, SeedPhrase};
 use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
-use crate::{ManagementKey, YkadaResult};
+use crate::{Ed25519PrivateKey, ManagementKey, YkadaResult};
 use tracing::debug;
 
 pub fn import_private_key_from_seed_phrase<F>(
@@ -30,12 +30,12 @@ where
 
     let child_key = root_key.derive(&derivation_path);
 
-    let piv_key = child_key.to_piv_key();
+    let piv_key = child_key.to_secret_key();
 
     let mut device = finder.find_first()?;
     device.authenticate(mgmt_key)?;
 
-    device.import_key(piv_key, config)?;
+    device.import_key(Ed25519PrivateKey::from(piv_key), config)?;
 
     debug!("Key imported successfully");
     Ok(child_key.verifying_key())

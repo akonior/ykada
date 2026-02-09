@@ -29,7 +29,7 @@ pub mod yubikey_contract {
         error::{CryptoError, DeviceError},
         model::{Algorithm, ManagementKey, Pin, Slot, TouchPolicy},
         ports::{KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer},
-        CardanoKey, DerivationPath, SeedPhrase, YkadaError,
+        CardanoKey, DerivationPath, Ed25519PrivateKey, SeedPhrase, YkadaError,
     };
 
     const TESTING_MANAGEMENT_KEY: ManagementKey = ManagementKey::new([
@@ -71,7 +71,7 @@ pub mod yubikey_contract {
     }
 
     pub(crate) fn test_import_key_fail_not_authenticated(mut device: impl KeyManager) {
-        let secret_key = SecretKey::from([0u8; 32]);
+        let secret_key = Ed25519PrivateKey::from([0u8; 32]);
         let config = KeyConfig::default();
 
         let result = device.import_key(secret_key, config.clone());
@@ -87,7 +87,7 @@ pub mod yubikey_contract {
             .authenticate(Some(&TESTING_MANAGEMENT_KEY))
             .expect("Authentication failed");
 
-        let secret_key = SecretKey::from([0u8; 32]);
+        let secret_key = Ed25519PrivateKey::from([0u8; 32]);
         let config = KeyConfig::default();
 
         let result = device.import_key(secret_key, config.clone());
@@ -132,7 +132,7 @@ pub mod yubikey_contract {
         let secret_bytes = [0u8; 32];
         let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
         let verifying_key = signing_key.verifying_key();
-        let secret_key = SecretKey::from(*signing_key.as_bytes());
+        let secret_key = Ed25519PrivateKey::from(*signing_key.as_bytes());
 
         let mut config = KeyConfig::default();
         config.touch_policy = TouchPolicy::Never;
@@ -220,7 +220,7 @@ pub mod yubikey_contract {
         let child_key = root_key.derive(&path);
 
         child_key.public_key();
-        let piv_key = child_key.to_piv_key();
+        let secret_key = child_key.to_secret_key();
 
         let config = KeyConfig {
             slot: crate::model::Slot::KeyManagement,
@@ -228,7 +228,7 @@ pub mod yubikey_contract {
         };
 
         device
-            .import_key(piv_key, config)
+            .import_key(Ed25519PrivateKey::from(secret_key), config)
             .expect("Failed to import key");
     }
 }

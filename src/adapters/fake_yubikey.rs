@@ -7,7 +7,9 @@ use crate::ports::{
     DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
 #[cfg(test)]
-use ed25519_dalek::{SecretKey, SigningKey, VerifyingKey};
+use crate::Ed25519PrivateKey;
+#[cfg(test)]
+use ed25519_dalek::{SigningKey, VerifyingKey};
 #[cfg(test)]
 use rand::rng;
 #[cfg(test)]
@@ -20,7 +22,7 @@ use std::collections::HashMap;
 pub struct FakeYubiKey {
     pub pin: Pin,
     pub mgmt_key: ManagementKey,
-    pub keys: HashMap<Slot, (SigningKey, VerifyingKey)>,
+    pub keys: HashMap<Slot, (Ed25519PrivateKey, VerifyingKey)>,
     pub authenticated: bool,
     pub pin_verified: bool,
 }
@@ -71,7 +73,7 @@ impl ManagementKeyVerifier for FakeYubiKey {
 
 #[cfg(test)]
 impl KeyManager for FakeYubiKey {
-    fn import_key(&mut self, key: SecretKey, config: KeyConfig) -> YkadaResult<()> {
+    fn import_key(&mut self, key: Ed25519PrivateKey, config: KeyConfig) -> YkadaResult<()> {
         if !self.authenticated {
             return Err(YkadaError::Device(DeviceError::AuthenticationFailed {
                 reason: "Not authenticated".to_string(),
@@ -86,9 +88,9 @@ impl KeyManager for FakeYubiKey {
             ));
         }
 
-        let signing_key = SigningKey::from_bytes(&key);
+        let signing_key = SigningKey::from_bytes(&key.as_array());
         let verifying_key = signing_key.verifying_key();
-        self.keys.insert(config.slot, (signing_key, verifying_key));
+        self.keys.insert(config.slot, (key, verifying_key));
         Ok(())
     }
 
@@ -105,7 +107,10 @@ impl KeyManager for FakeYubiKey {
         let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
         let verifying_key = signing_key.verifying_key();
 
-        self.keys.insert(config.slot, (signing_key, verifying_key));
+        self.keys.insert(
+            config.slot,
+            (Ed25519PrivateKey::from(secret_bytes), verifying_key),
+        );
         Ok(verifying_key)
     }
 }
@@ -130,7 +135,7 @@ impl Signer for FakeYubiKey {
         })?;
 
         use ed25519_dalek::Signer;
-        let signature = signing_key.sign(data);
+        let signature = signing_key.to_signing_key().sign(data);
         Ok(signature.to_bytes().to_vec())
     }
 }

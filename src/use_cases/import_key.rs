@@ -4,7 +4,7 @@ use ed25519_dalek::{SecretKey, SigningKey, VerifyingKey};
 use tracing::debug;
 
 use crate::ports::{DeviceFinder, KeyManager};
-use crate::{DerPrivateKey, ManagementKey, YkadaResult};
+use crate::{DerPrivateKey, Ed25519PrivateKey, ManagementKey, YkadaResult};
 
 pub fn import_private_key_in_der_format<F>(
     finder: &F,
@@ -25,7 +25,7 @@ where
 
     device.authenticate(mgmt_key)?;
 
-    device.import_key(secret_key, config)?;
+    device.import_key(Ed25519PrivateKey::from(secret_key), config)?;
 
     debug!("Loaded private key to YubiKey");
 

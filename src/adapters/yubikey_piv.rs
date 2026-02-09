@@ -3,7 +3,8 @@ use crate::model::{Algorithm, ManagementKey, ManagementKeyError, Pin, Slot};
 use crate::ports::{
     DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
-use ed25519_dalek::{SecretKey, VerifyingKey};
+use crate::Ed25519PrivateKey;
+use ed25519_dalek::VerifyingKey;
 use std::convert::TryInto;
 use tracing::{debug, info};
 use yubikey::piv::{generate, import_cv_key, sign_data};
@@ -98,7 +99,7 @@ impl PinVerifier for PivYubiKey {
 }
 
 impl KeyManager for PivYubiKey {
-    fn import_key(&mut self, key: SecretKey, config: KeyConfig) -> YkadaResult<()> {
+    fn import_key(&mut self, key: Ed25519PrivateKey, config: KeyConfig) -> YkadaResult<()> {
         self.ensure_authenticated()?;
 
         let algorithm = Algorithm::default_cardano();
@@ -114,7 +115,7 @@ impl KeyManager for PivYubiKey {
             &mut self.device,
             config.slot.to_yubikey_slot_id(),
             algorithm.to_yubikey_algorithm_id(),
-            &key,
+            key.as_array(),
             config.touch_policy.to_yubikey_touch_policy(),
             config.pin_policy.to_yubikey_pin_policy(),
         )

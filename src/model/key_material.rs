@@ -25,6 +25,10 @@ impl Ed25519PrivateKey {
     pub fn as_array(&self) -> &[u8; 32] {
         &self.0
     }
+
+    pub fn to_signing_key(&self) -> SigningKey {
+        SigningKey::from_bytes(self.as_array())
+    }
 }
 
 impl fmt::Debug for Ed25519PrivateKey {
@@ -42,6 +46,17 @@ impl From<SigningKey> for Ed25519PrivateKey {
 impl From<&SigningKey> for Ed25519PrivateKey {
     fn from(key: &SigningKey) -> Self {
         Self(*key.as_bytes())
+    }
+}
+impl From<[u8; 32]> for Ed25519PrivateKey {
+    fn from(key: [u8; 32]) -> Self {
+        Self(key)
+    }
+}
+
+impl From<&[u8; 32]> for Ed25519PrivateKey {
+    fn from(key: &[u8; 32]) -> Self {
+        Self(*key)
     }
 }
 

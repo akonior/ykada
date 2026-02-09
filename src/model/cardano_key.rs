@@ -42,7 +42,7 @@ impl CardanoKey {
             .expect("XPub public_key_bytes() always returns 32 bytes")
     }
 
-    pub fn to_piv_key(&self) -> SecretKey {
+    pub fn to_secret_key(&self) -> SecretKey {
         let extended_secret = self.0.extended_secret_key_bytes();
         let mut k_l = [0u8; 32];
         k_l.copy_from_slice(&extended_secret[..32]);
@@ -197,7 +197,7 @@ mod tests {
         let xpub_key = cardano_key.public_key();
         let xpub_bytes = xpub_key.as_bytes();
 
-        let piv_key = cardano_key.to_piv_key();
+        let piv_key = cardano_key.to_secret_key();
         let extended_secret = cardano_key.0.extended_secret_key_bytes();
         let chain_code = cardano_key.0.chain_code();
 
