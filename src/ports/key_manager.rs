@@ -1,4 +1,3 @@
-
 use crate::error::YkadaResult;
 use crate::model::{PinPolicy, Slot, TouchPolicy};
 use ed25519_dalek::{SecretKey, VerifyingKey};

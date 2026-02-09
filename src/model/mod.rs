@@ -1,4 +1,3 @@
-
 mod algorithm;
 mod cardano_key;
 mod derivation_path;

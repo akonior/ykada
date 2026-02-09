@@ -1,4 +1,3 @@
-
 use ed25519_bip32::{DerivationScheme, XPrv};
 use ed25519_dalek::SecretKey;
 use pbkdf2::pbkdf2_hmac;

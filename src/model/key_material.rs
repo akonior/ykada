@@ -1,4 +1,3 @@
-
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use std::fmt;
 use thiserror::Error;
@@ -88,7 +87,6 @@ impl From<&VerifyingKey> for PublicKey {
         Self(*key.as_bytes())
     }
 }
-
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct KeyPair {

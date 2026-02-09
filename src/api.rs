@@ -1,4 +1,3 @@
-
 use crate::adapters::PivDeviceFinder;
 use crate::error::YkadaResult;
 use crate::ports::KeyConfig;

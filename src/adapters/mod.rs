@@ -1,4 +1,3 @@
-
 mod yubikey_piv;
 
 #[cfg(test)]

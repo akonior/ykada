@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 use crate::error::{DeviceError, KeyManagementError, YkadaError, YkadaResult};
 #[cfg(test)]
@@ -16,7 +15,6 @@ use rand::RngCore;
 #[cfg(test)]
 use std::collections::HashMap;
 #[cfg(test)]
-
 #[cfg(test)]
 #[derive(Debug, Clone)]
 pub struct FakeYubiKey {

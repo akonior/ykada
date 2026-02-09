@@ -1,4 +1,3 @@
-
 use crate::error::YkadaResult;
 use crate::model::ManagementKey;
 use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};

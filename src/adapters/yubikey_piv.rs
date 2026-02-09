@@ -1,4 +1,3 @@
-
 use crate::error::{CryptoError, DeviceError, KeyManagementError, YkadaError, YkadaResult};
 use crate::model::{Algorithm, ManagementKey, ManagementKeyError, Pin, Slot};
 use crate::ports::{

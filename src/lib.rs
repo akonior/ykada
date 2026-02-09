@@ -1,4 +1,3 @@
-
 use std::convert::TryInto;
 
 use tracing::{debug, info};
@@ -27,7 +26,6 @@ pub fn find_first_yubikey() -> YubiKey {
     let mut readers = Context::open().unwrap();
     for reader in readers.iter().unwrap() {
         if let Ok(yk_found) = reader.open() {
-
             return yk_found;
         }
     }

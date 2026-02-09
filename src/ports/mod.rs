@@ -1,4 +1,3 @@
-
 pub(crate) mod contract_tests;
 mod device_finder;
 mod key_manager;
