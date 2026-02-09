@@ -96,7 +96,6 @@ pub mod yubikey_contract {
     }
 
     pub(crate) fn test_sign_key_not_found(mut device: impl Signer) {
-        // Use a slot that likely doesn't have a key
         let empty_slot = Slot::Authentication;
         let result = device.sign(
             b"test data",
@@ -188,13 +187,11 @@ pub mod yubikey_contract {
         let verifying_key = result.unwrap();
         assert_eq!(verifying_key.as_bytes().len(), 32);
 
-        // Verify we can sign with the generated key
         let pin = Pin::default();
         let data = b"test data";
         let sign_result = device.sign(data, config.slot, Algorithm::default_cardano(), Some(&pin));
 
         assert!(sign_result.is_ok(), "error: {:?}", sign_result.err());
-        // Verify signature
         let signature_bytes = sign_result.unwrap();
         let sig_array: [u8; 64] = signature_bytes
             .try_into()
@@ -213,24 +210,20 @@ pub mod yubikey_contract {
             .authenticate(Some(&TESTING_MANAGEMENT_KEY))
             .expect("Authentication failed");
 
-        // Use CIP-3 test vector mnemonic
         let seed_phrase = "eight country switch draw meat scout mystery blade tip drift useless good keep usage title";
         let seed = SeedPhrase::try_from(seed_phrase).expect("Invalid seed phrase");
 
-        // Derive payment key: m/1852'/1815'/0'/0/0
         let root_key =
             CardanoKey::from_seed_phrase(&seed, "").expect("Failed to generate root key");
         let path =
             DerivationPath::try_from("m/1852'/1815'/0'/0/0").expect("Invalid derivation path");
         let child_key = root_key.derive(&path);
 
-        // Extract expected public key and kL scalar
         child_key.public_key();
         let piv_key = child_key.to_piv_key();
 
-        // Import into YubiKey (use a different slot to avoid conflicts)
         let config = KeyConfig {
-            slot: crate::model::Slot::KeyManagement, // Use 9d slot
+            slot: crate::model::Slot::KeyManagement,
             ..KeyConfig::default()
         };
 

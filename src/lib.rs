@@ -1,12 +1,8 @@
-// Legacy functions - these will be refactored to use trait-based approach
-// TODO: Refactor to use yubikey::ops traits
 
 use std::convert::TryInto;
 
 use tracing::{debug, info};
 
-// Import yubikey crate types - these are used by legacy functions
-// Use fully qualified paths to avoid conflict with our yubikey module
 use ::yubikey::piv::{import_cv_key, sign_data};
 use ::yubikey::{Context, MgmKey, PinPolicy as YkPinPolicy, TouchPolicy as YkTouchPolicy, YubiKey};
 
@@ -20,10 +16,8 @@ mod model;
 pub mod ports;
 pub mod use_cases;
 
-// Re-export commonly used types
 pub use error::{YkadaError, YkadaResult};
 
-// Re-export public API
 pub use api::*;
 
 const DEFAULT_PIN: &[u8] = b"123456";
@@ -33,8 +27,6 @@ pub fn find_first_yubikey() -> YubiKey {
     let mut readers = Context::open().unwrap();
     for reader in readers.iter().unwrap() {
         if let Ok(yk_found) = reader.open() {
-            // println!("Connected to reader: {:?}", reader.name());
-            // println!("YubiKey ATR: {:?}", yk_found);
 
             return yk_found;
         }

@@ -1,7 +1,3 @@
-//! PIV (Personal Identity Verification) implementation of YubiKey operations
-//!
-//! This module provides concrete implementations of YubiKey operation traits
-//! using the yubikey crate's PIV functionality.
 
 use crate::error::{CryptoError, DeviceError, KeyManagementError, YkadaError, YkadaResult};
 use crate::model::{Algorithm, ManagementKey, ManagementKeyError, Pin, Slot};
@@ -14,9 +10,6 @@ use tracing::{debug, info};
 use yubikey::piv::{generate, import_cv_key, sign_data};
 use yubikey::{Context, MgmKey, YubiKey};
 
-/// PIV-based YubiKey device finder
-///
-/// Finds and connects to YubiKey devices using PC/SC.
 #[derive(Debug, Clone, Default)]
 pub struct PivDeviceFinder;
 
@@ -45,9 +38,6 @@ impl DeviceFinder for PivDeviceFinder {
     }
 }
 
-/// PIV-based YubiKey device handle
-///
-/// This wraps a YubiKey connection and implements all operation traits.
 #[derive(Debug)]
 pub struct PivYubiKey {
     device: YubiKey,
@@ -55,7 +45,6 @@ pub struct PivYubiKey {
 }
 
 impl PivYubiKey {
-    /// Create a new PIV YubiKey handle
     pub fn new(device: YubiKey) -> Self {
         Self {
             device,
@@ -63,7 +52,6 @@ impl PivYubiKey {
         }
     }
 
-    /// Ensure device is authenticated
     fn ensure_authenticated(&mut self) -> YkadaResult<()> {
         if !self.authenticated {
             self.authenticate(None)?;
@@ -79,7 +67,6 @@ impl ManagementKeyVerifier for PivYubiKey {
                 YkadaError::Domain(crate::error::DomainError::ManagementKey(e))
             })?
         } else {
-            // Use device's default management key (factory or currently configured)
             MgmKey::get_default(&self.device).map_err(|e| {
                 YkadaError::Device(DeviceError::AuthenticationFailed {
                     reason: format!("Failed to get default management key: {}", e),
@@ -102,7 +89,6 @@ impl ManagementKeyVerifier for PivYubiKey {
 impl PinVerifier for PivYubiKey {
     fn verify_pin(&mut self, pin: &Pin) -> YkadaResult<()> {
         self.device.verify_pin(pin.as_bytes()).map_err(|e| {
-            // Try to extract attempts remaining if available
             let reason = format!("PIN verification failed: {}", e);
             YkadaError::Device(DeviceError::PinVerificationFailed { reason })
         })?;
@@ -151,7 +137,6 @@ impl KeyManager for PivYubiKey {
             }));
         }
 
-        // Convert domain types to yubikey crate types
         let slot_id = config.slot.to_yubikey_slot_id();
         let algorithm_id = Algorithm::default_cardano().to_yubikey_algorithm_id();
         let pin_policy = config.pin_policy.to_yubikey_pin_policy();
@@ -162,7 +147,6 @@ impl KeyManager for PivYubiKey {
             slot_id, algorithm_id
         );
 
-        // Generate key on YubiKey
         let spki = generate(
             &mut self.device,
             slot_id,
@@ -179,11 +163,8 @@ impl KeyManager for PivYubiKey {
 
         info!("Key generated successfully in slot {:?}", slot_id);
 
-        // Convert SubjectPublicKeyInfoOwned to VerifyingKey
-        // For Ed25519, extract public key bytes from BitString
         let public_key_bytes = spki.subject_public_key.raw_bytes();
 
-        // For Ed25519, we expect exactly 32 bytes
         if public_key_bytes.len() != 32 {
             return Err(YkadaError::Crypto(CryptoError::InvalidKeyFormat {
                 format: format!(
@@ -193,7 +174,6 @@ impl KeyManager for PivYubiKey {
             }));
         }
 
-        // Convert to VerifyingKey
         let public_key_array: [u8; 32] = public_key_bytes[..32].try_into().map_err(|_| {
             YkadaError::Crypto(CryptoError::InvalidKeyFormat {
                 format: "Failed to convert public key bytes to array".to_string(),
@@ -216,7 +196,6 @@ impl Signer for PivYubiKey {
         algorithm: Algorithm,
         pin: Option<&Pin>,
     ) -> YkadaResult<Vec<u8>> {
-        // Verify PIN if provided
         if let Some(pin) = pin {
             self.verify_pin(pin)?;
         }

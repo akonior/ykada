@@ -1,7 +1,3 @@
-//! Management Key type for YubiKey PIV authentication
-//!
-//! This module defines a domain type for the PIV Management Key and
-//! provides idiomatic conversions to the yubikey crate's `MgmKey`.
 
 use std::convert::TryFrom;
 use std::fmt;
@@ -9,27 +5,16 @@ use std::fmt;
 use thiserror::Error;
 use yubikey::{MgmAlgorithmId, MgmKey};
 
-/// Management Key for YubiKey PIV authentication
-///
-/// A Management Key is a 24-byte key (3 DES keys of 8 bytes each) used to
-/// authenticate for key management operations on the YubiKey.
-/// This type ensures key validity at construction time.
 #[derive(Clone, PartialEq, Eq)]
 pub struct ManagementKey([u8; 24]);
 
 impl ManagementKey {
-    /// Management Key length in bytes
     pub const LENGTH: usize = 24;
 
     pub const fn new(key: [u8; 24]) -> Self {
         Self(key)
     }
 
-    /// Create a Management Key from a byte slice
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the slice length is not exactly 24 bytes
     pub fn from_slice(key: &[u8]) -> Result<Self, ManagementKeyError> {
         if key.len() != Self::LENGTH {
             return Err(ManagementKeyError::InvalidLength {
@@ -42,12 +27,10 @@ impl ManagementKey {
         Ok(Self(bytes))
     }
 
-    /// Get the Management Key as a byte slice
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
 
-    /// Get the Management Key as an array reference
     pub fn as_array(&self) -> &[u8; 24] {
         &self.0
     }
@@ -59,22 +42,15 @@ impl fmt::Debug for ManagementKey {
     }
 }
 
-/// Errors that can occur when creating or converting a Management Key
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum ManagementKeyError {
-    /// Management Key has invalid length
     #[error("Management Key must be exactly {expected} bytes, got {actual}")]
     InvalidLength { expected: usize, actual: usize },
 
-    /// Underlying yubikey crate rejected the key material
     #[error("Invalid Management Key material: {reason}")]
     InvalidMaterial { reason: String },
 }
 
-/// Fallible conversion from domain `ManagementKey` to yubikey crate's `MgmKey`.
-///
-/// This keeps the conversion logic close to the domain type and allows
-/// call-sites to use idiomatic `try_from` / `try_into` / `?` patterns.
 impl TryFrom<&ManagementKey> for MgmKey {
     type Error = ManagementKeyError;
 

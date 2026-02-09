@@ -1,22 +1,12 @@
-//! Key material types (PrivateKey, PublicKey, KeyPair)
-//!
-//! These types wrap raw key bytes to prevent primitive obsession and ensure
-//! type safety when working with cryptographic keys.
 
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use std::fmt;
 use thiserror::Error;
 
-/// Ed25519 private key (32 bytes)
 #[derive(Clone, PartialEq, Eq)]
 pub struct PrivateKey([u8; 32]);
 
 impl PrivateKey {
-    /// Create a new PrivateKey from bytes
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the slice length is not exactly 32 bytes
     pub fn from_slice(key: &[u8]) -> Result<Self, KeyMaterialError> {
         if key.len() != 32 {
             return Err(KeyMaterialError::InvalidLength {
@@ -29,12 +19,10 @@ impl PrivateKey {
         Ok(Self(bytes))
     }
 
-    /// Get the private key as a byte slice
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
 
-    /// Get the private key as an array reference
     pub fn as_array(&self) -> &[u8; 32] {
         &self.0
     }
@@ -58,16 +46,10 @@ impl From<&SigningKey> for PrivateKey {
     }
 }
 
-/// Ed25519 public key (32 bytes)
 #[derive(Clone, PartialEq, Eq)]
 pub struct PublicKey([u8; 32]);
 
 impl PublicKey {
-    /// Create a new PublicKey from bytes
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the slice length is not exactly 32 bytes
     pub fn from_slice(key: &[u8]) -> Result<Self, KeyMaterialError> {
         if key.len() != 32 {
             return Err(KeyMaterialError::InvalidLength {
@@ -80,12 +62,10 @@ impl PublicKey {
         Ok(Self(bytes))
     }
 
-    /// Get the public key as a byte slice
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
 
-    /// Get the public key as an array reference
     pub fn as_array(&self) -> &[u8; 32] {
         &self.0
     }
@@ -109,10 +89,7 @@ impl From<&VerifyingKey> for PublicKey {
     }
 }
 
-// Conversion from SPKI is handled in logic/key_conversion.rs
-// to avoid direct dependency on x509_cert in model layer
 
-/// Ed25519 key pair (private + public key)
 #[derive(Clone, PartialEq, Eq)]
 pub struct KeyPair {
     private: PrivateKey,
@@ -120,17 +97,14 @@ pub struct KeyPair {
 }
 
 impl KeyPair {
-    /// Create a new KeyPair from private and public keys
     pub fn new(private: PrivateKey, public: PublicKey) -> Self {
         Self { private, public }
     }
 
-    /// Get the private key
     pub fn private(&self) -> &PrivateKey {
         &self.private
     }
 
-    /// Get the public key
     pub fn public(&self) -> &PublicKey {
         &self.public
     }
@@ -159,14 +133,11 @@ impl From<SigningKey> for KeyPair {
 #[derive(Clone, PartialEq, Eq)]
 pub struct DerPrivateKey(pub Vec<u8>);
 
-/// Errors that can occur when working with key material
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum KeyMaterialError {
-    /// Key has invalid length
     #[error("Key must be exactly {expected} bytes, got {actual}")]
     InvalidLength { expected: usize, actual: usize },
 
-    /// SPKI format is invalid or unsupported
     #[error("Invalid SPKI format: {reason}")]
     InvalidSpkiFormat { reason: String },
 }

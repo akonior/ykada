@@ -1,7 +1,3 @@
-//! Fake YubiKey adapter for testing ports (traits)
-//!
-//! This module provides a fake implementation of YubiKey operation traits
-//! for testing purposes. It is only available in test scope.
 
 #[cfg(test)]
 use crate::error::{DeviceError, KeyManagementError, YkadaError, YkadaResult};
@@ -21,14 +17,13 @@ use rand::RngCore;
 use std::collections::HashMap;
 #[cfg(test)]
 
-/// Fake YubiKey implementation for testing trait behavior
 #[cfg(test)]
 #[derive(Debug, Clone)]
 pub struct FakeYubiKey {
     pub pin: Pin,
     pub mgmt_key: ManagementKey,
     pub keys: HashMap<Slot, (SigningKey, VerifyingKey)>,
-    pub authenticated: bool, // TOD make priv
+    pub authenticated: bool,
     pub pin_verified: bool,
 }
 
@@ -106,14 +101,12 @@ impl KeyManager for FakeYubiKey {
             }));
         }
 
-        // Generate a random key for testing
         use ed25519_dalek::SecretKey;
         let mut secret_bytes = [0u8; 32];
         rng().fill_bytes(&mut secret_bytes);
         let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
         let verifying_key = signing_key.verifying_key();
 
-        // Store the generated key in the slot
         self.keys.insert(config.slot, (signing_key, verifying_key));
         Ok(verifying_key)
     }
@@ -128,19 +121,16 @@ impl Signer for FakeYubiKey {
         _algorithm: Algorithm,
         pin: Option<&Pin>,
     ) -> YkadaResult<Vec<u8>> {
-        // Verify PIN if provided
         if let Some(pin) = pin {
             self.verify_pin(pin)?;
         }
 
-        // Find key in slot
         let (signing_key, _) = self.keys.get(&slot).ok_or_else(|| {
             YkadaError::Crypto(crate::error::CryptoError::SignatureFailed {
                 reason: "Key not found".to_string(),
             })
         })?;
 
-        // Sign the data
         use ed25519_dalek::Signer;
         let signature = signing_key.sign(data);
         Ok(signature.to_bytes().to_vec())
