@@ -83,6 +83,10 @@ impl Ed25519PublicKey {
     pub fn as_array(&self) -> &[u8; 32] {
         &self.0
     }
+
+    pub fn to_verifying_key(&self) -> VerifyingKey {
+        VerifyingKey::from_bytes(self.as_array()).expect("Invalid Ed25519 public key")
+    }
 }
 
 impl fmt::Debug for Ed25519PublicKey {

@@ -3,7 +3,7 @@ use crate::model::{Algorithm, ManagementKey, ManagementKeyError, Pin, Slot};
 use crate::ports::{
     DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
-use crate::Ed25519PrivateKey;
+use crate::{Ed25519PrivateKey, Ed25519PublicKey};
 use ed25519_dalek::VerifyingKey;
 use std::convert::TryInto;
 use tracing::{debug, info};
@@ -130,7 +130,7 @@ impl KeyManager for PivYubiKey {
         Ok(())
     }
 
-    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<VerifyingKey> {
+    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<Ed25519PublicKey> {
         if !self.authenticated {
             return Err(YkadaError::Device(DeviceError::AuthenticationFailed {
                 reason: "Not authenticated".to_string(),
@@ -180,11 +180,13 @@ impl KeyManager for PivYubiKey {
             })
         })?;
 
-        VerifyingKey::from_bytes(&public_key_array).map_err(|e| {
-            YkadaError::Crypto(CryptoError::InvalidKeyFormat {
-                format: format!("Invalid Ed25519 public key: {}", e),
+        VerifyingKey::from_bytes(&public_key_array)
+            .map_err(|e| {
+                YkadaError::Crypto(CryptoError::InvalidKeyFormat {
+                    format: format!("Invalid Ed25519 public key: {}", e),
+                })
             })
-        })
+            .map(Ed25519PublicKey::from)
     }
 }
 

@@ -184,7 +184,7 @@ pub mod yubikey_contract {
         let result = device.generate_key(config.clone());
 
         assert!(result.is_ok(), "error: {:?}", result.err());
-        let verifying_key = result.unwrap();
+        let verifying_key = result.unwrap().to_verifying_key();
         assert_eq!(verifying_key.as_bytes().len(), 32);
 
         let pin = Pin::default();
@@ -198,6 +198,7 @@ pub mod yubikey_contract {
             .map_err(|_| "Invalid signature length")
             .expect("Invalid signature length");
         let signature = ed25519_dalek::Signature::from_bytes(&sig_array);
+
         verifying_key
             .verify_strict(data, &signature)
             .expect("Signature verification failed");
@@ -219,7 +220,6 @@ pub mod yubikey_contract {
             DerivationPath::try_from("m/1852'/1815'/0'/0/0").expect("Invalid derivation path");
         let child_key = root_key.derive(&path);
 
-        child_key.public_key();
         let private_key = child_key.private_key();
 
         let config = KeyConfig {

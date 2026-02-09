@@ -7,7 +7,7 @@ use crate::ports::{
     DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
 #[cfg(test)]
-use crate::Ed25519PrivateKey;
+use crate::{Ed25519PrivateKey, Ed25519PublicKey};
 #[cfg(test)]
 use ed25519_dalek::{SigningKey, VerifyingKey};
 #[cfg(test)]
@@ -94,7 +94,7 @@ impl KeyManager for FakeYubiKey {
         Ok(())
     }
 
-    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<VerifyingKey> {
+    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<Ed25519PublicKey> {
         if !self.authenticated {
             return Err(YkadaError::Device(DeviceError::AuthenticationFailed {
                 reason: "Not authenticated".to_string(),
@@ -111,7 +111,7 @@ impl KeyManager for FakeYubiKey {
             config.slot,
             (Ed25519PrivateKey::from(secret_bytes), verifying_key),
         );
-        Ok(verifying_key)
+        Ok(verifying_key.into())
     }
 }
 

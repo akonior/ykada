@@ -1,13 +1,13 @@
 use crate::error::YkadaResult;
 use crate::model::ManagementKey;
 use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
-use ed25519_dalek::VerifyingKey;
+use crate::Ed25519PublicKey;
 
 pub fn generate_key<F>(
     finder: &F,
     config: KeyConfig,
     mgmt_key: Option<&ManagementKey>,
-) -> YkadaResult<VerifyingKey>
+) -> YkadaResult<Ed25519PublicKey>
 where
     F: DeviceFinder,
     F::Device: KeyManager + crate::ports::ManagementKeyVerifier,

@@ -1,23 +1,21 @@
 use crate::adapters::PivDeviceFinder;
 use crate::error::YkadaResult;
+pub use crate::model::*;
 use crate::ports::KeyConfig;
 use crate::use_cases::{
     generate_key as generate_key_use_case,
     import_private_key_from_seed_phrase as import_private_key_from_seed_phrase_use_case,
     import_private_key_in_der_format as import_private_key_in_der_format_use_case,
 };
-use ed25519_dalek::VerifyingKey;
 
-pub use crate::model::*;
-
-pub fn generate_key() -> YkadaResult<VerifyingKey> {
+pub fn generate_key() -> YkadaResult<Ed25519PublicKey> {
     generate_key_with_config(KeyConfig::default(), None)
 }
 
 pub fn generate_key_with_config(
     config: KeyConfig,
     mgmt_key: Option<&ManagementKey>,
-) -> YkadaResult<VerifyingKey> {
+) -> YkadaResult<Ed25519PublicKey> {
     let finder = PivDeviceFinder;
     generate_key_use_case(&finder, config, mgmt_key)
 }
