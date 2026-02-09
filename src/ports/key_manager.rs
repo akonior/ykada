@@ -2,7 +2,7 @@
 
 use crate::error::YkadaResult;
 use crate::model::{PinPolicy, Slot, TouchPolicy};
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::{SecretKey, VerifyingKey};
 
 /// Configuration for key import/generation
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,11 +30,11 @@ impl Default for KeyConfig {
 /// This trait abstracts key management operations on YubiKey.
 /// Works with any key storage mechanism (PIV slots, OpenPGP keys, etc.)
 pub trait KeyManager {
-    /// Import a signing key into the YubiKey
+    /// Import a secret key into the YubiKey
     ///
     /// # Arguments
     ///
-    /// * `key` - The signing key to import
+    /// * `key` - The secret key to import
     /// * `config` - Configuration for key storage
     ///
     /// # Returns
@@ -47,7 +47,7 @@ pub trait KeyManager {
     /// - Device is not authenticated
     /// - Slot is already occupied
     /// - Key import fails
-    fn import_key(&mut self, key: SigningKey, config: KeyConfig) -> YkadaResult<VerifyingKey>;
+    fn import_key(&mut self, key: SecretKey, config: KeyConfig) -> YkadaResult<()>;
 
     /// Generate a new keypair on the YubiKey
     ///

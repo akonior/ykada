@@ -29,7 +29,7 @@ pub mod yubikey_contract {
         error::{CryptoError, DeviceError},
         model::{Algorithm, ManagementKey, Pin, Slot, TouchPolicy},
         ports::{KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer},
-        YkadaError,
+        CardanoKey, DerivationPath, SeedPhrase, YkadaError,
     };
 
     const TESTING_MANAGEMENT_KEY: ManagementKey = ManagementKey::new([
@@ -71,11 +71,10 @@ pub mod yubikey_contract {
     }
 
     pub(crate) fn test_import_key_fail_not_authenticated(mut device: impl KeyManager) {
-        let secret_bytes = [0u8; 32];
-        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
+        let secret_key = SecretKey::from([0u8; 32]);
         let config = KeyConfig::default();
 
-        let result = device.import_key(signing_key, config.clone());
+        let result = device.import_key(secret_key, config.clone());
 
         assert!(matches!(
             result.unwrap_err(),
@@ -88,11 +87,10 @@ pub mod yubikey_contract {
             .authenticate(Some(&TESTING_MANAGEMENT_KEY))
             .expect("Authentication failed");
 
-        let secret_bytes = [0u8; 32];
-        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
+        let secret_key = SecretKey::from([0u8; 32]);
         let config = KeyConfig::default();
 
-        let result = device.import_key(signing_key, config.clone());
+        let result = device.import_key(secret_key, config.clone());
 
         assert!(result.is_ok(), "error: {:?}", result.err());
     }
@@ -135,11 +133,12 @@ pub mod yubikey_contract {
         let secret_bytes = [0u8; 32];
         let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
         let verifying_key = signing_key.verifying_key();
+        let secret_key = SecretKey::from(*signing_key.as_bytes());
 
         let mut config = KeyConfig::default();
         config.touch_policy = TouchPolicy::Never;
 
-        let result = device.import_key(signing_key, config.clone());
+        let result = device.import_key(secret_key, config.clone());
 
         assert!(result.is_ok(), "error: {:?}", result.err());
 
@@ -205,5 +204,38 @@ pub mod yubikey_contract {
         verifying_key
             .verify_strict(data, &signature)
             .expect("Signature verification failed");
+    }
+
+    pub(crate) fn test_import_seed_phrase_derived_key(
+        mut device: impl KeyManager + ManagementKeyVerifier + Signer,
+    ) {
+        device
+            .authenticate(Some(&TESTING_MANAGEMENT_KEY))
+            .expect("Authentication failed");
+
+        // Use CIP-3 test vector mnemonic
+        let seed_phrase = "eight country switch draw meat scout mystery blade tip drift useless good keep usage title";
+        let seed = SeedPhrase::try_from(seed_phrase).expect("Invalid seed phrase");
+
+        // Derive payment key: m/1852'/1815'/0'/0/0
+        let root_key =
+            CardanoKey::from_seed_phrase(&seed, "").expect("Failed to generate root key");
+        let path =
+            DerivationPath::try_from("m/1852'/1815'/0'/0/0").expect("Invalid derivation path");
+        let child_key = root_key.derive(&path);
+
+        // Extract expected public key and kL scalar
+        child_key.public_key();
+        let piv_key = child_key.to_piv_key();
+
+        // Import into YubiKey (use a different slot to avoid conflicts)
+        let config = KeyConfig {
+            slot: crate::model::Slot::KeyManagement, // Use 9d slot
+            ..KeyConfig::default()
+        };
+
+        device
+            .import_key(piv_key, config)
+            .expect("Failed to import key");
     }
 }

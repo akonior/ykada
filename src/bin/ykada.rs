@@ -27,6 +27,15 @@ pub enum Commands {
     ImportKey {
         #[command(flatten)]
         key_options: KeyOptions,
+        /// BIP39 seed phrase (mnemonic). If provided, imports from seed instead of DER.
+        #[arg(long)]
+        seed: Option<String>,
+        /// Passphrase for seed phrase (default: empty)
+        #[arg(long, default_value = "")]
+        passphrase: String,
+        /// Derivation path (default: m/1852'/1815'/0'/0/0)
+        #[arg(long)]
+        path: Option<String>,
     },
 
     /// Sign data provided via stdin
@@ -121,7 +130,12 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     match cli.command {
-        Commands::ImportKey { key_options } => {
+        Commands::ImportKey {
+            key_options,
+            seed,
+            passphrase,
+            path,
+        } => {
             let config = ykada::ports::KeyConfig {
                 slot: key_options.slot.into(),
                 pin_policy: key_options.pin_policy.into(),
@@ -130,11 +144,28 @@ fn main() -> anyhow::Result<()> {
 
             let mgmt_key_opt = key_options.mgmt_key.map(|s| s.try_into()).transpose()?;
 
-            let mut buf = Vec::new();
-            io::stdin().read_to_end(&mut buf)?;
-            let der_key = DerPrivateKey(buf);
-            ykada::import_private_key_in_der_format(der_key, config, mgmt_key_opt.as_ref())
-                .context("failed to load DER private key into YubiKey")?;
+            if let Some(seed_phrase) = seed {
+                // Import from seed phrase
+                let verifying_key = ykada::import_private_key_from_seed_phrase(
+                    &seed_phrase,
+                    &passphrase,
+                    path.as_deref(),
+                    config,
+                    mgmt_key_opt.as_ref(),
+                )
+                .context("failed to import key from seed phrase")?;
+
+                // Output public key as hex
+                let public_key_hex = hex::encode(verifying_key.as_bytes());
+                println!("{}", public_key_hex);
+            } else {
+                // Import from DER (existing behavior)
+                let mut buf = Vec::new();
+                io::stdin().read_to_end(&mut buf)?;
+                let der_key = DerPrivateKey(buf);
+                ykada::import_private_key_in_der_format(der_key, config, mgmt_key_opt.as_ref())
+                    .context("failed to load DER private key into YubiKey")?;
+            }
         }
 
         Commands::Sign => {

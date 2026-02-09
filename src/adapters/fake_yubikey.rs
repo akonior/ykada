@@ -12,7 +12,7 @@ use crate::ports::{
     DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
 #[cfg(test)]
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::{SecretKey, SigningKey, VerifyingKey};
 #[cfg(test)]
 use rand::rng;
 #[cfg(test)]
@@ -78,7 +78,7 @@ impl ManagementKeyVerifier for FakeYubiKey {
 
 #[cfg(test)]
 impl KeyManager for FakeYubiKey {
-    fn import_key(&mut self, key: SigningKey, config: KeyConfig) -> YkadaResult<VerifyingKey> {
+    fn import_key(&mut self, key: SecretKey, config: KeyConfig) -> YkadaResult<()> {
         if !self.authenticated {
             return Err(YkadaError::Device(DeviceError::AuthenticationFailed {
                 reason: "Not authenticated".to_string(),
@@ -93,9 +93,10 @@ impl KeyManager for FakeYubiKey {
             ));
         }
 
-        let verifying_key = key.verifying_key();
-        self.keys.insert(config.slot, (key, verifying_key));
-        Ok(verifying_key)
+        let signing_key = SigningKey::from_bytes(&key);
+        let verifying_key = signing_key.verifying_key();
+        self.keys.insert(config.slot, (signing_key, verifying_key));
+        Ok(())
     }
 
     fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<VerifyingKey> {
@@ -183,6 +184,7 @@ mod tests {
             test_sign_success => yubikey_contract::test_sign_success,
             test_generate_key_not_authenticated => yubikey_contract::test_generate_key_not_authenticated,
             test_generate_key_success => yubikey_contract::test_generate_key_success,
+            test_import_seed_phrase_derived_key => yubikey_contract::test_import_seed_phrase_derived_key,
         }
     );
 }

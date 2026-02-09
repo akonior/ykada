@@ -116,6 +116,18 @@ pub enum DomainError {
     /// Management Key error
     #[error("Management Key error: {0}")]
     ManagementKey(#[from] crate::model::ManagementKeyError),
+
+    /// Seed phrase error
+    #[error("Seed phrase error: {0}")]
+    SeedPhrase(#[from] crate::model::SeedPhraseError),
+
+    /// Derivation path error
+    #[error("Derivation path error: {0}")]
+    DerivationPath(#[from] crate::model::DerivationPathError),
+
+    /// Cardano key error
+    #[error("Cardano key error: {0}")]
+    CardanoKey(#[from] crate::model::CardanoKeyError),
 }
 
 /// Key management errors
@@ -136,6 +148,25 @@ pub enum KeyManagementError {
     /// Failed to store key
     #[error("Failed to store key to {destination}: {reason}")]
     StoreFailed { destination: String, reason: String },
+}
+
+/// Convert model errors to YkadaError (via DomainError)
+impl From<crate::model::SeedPhraseError> for YkadaError {
+    fn from(err: crate::model::SeedPhraseError) -> Self {
+        YkadaError::Domain(DomainError::SeedPhrase(err))
+    }
+}
+
+impl From<crate::model::DerivationPathError> for YkadaError {
+    fn from(err: crate::model::DerivationPathError) -> Self {
+        YkadaError::Domain(DomainError::DerivationPath(err))
+    }
+}
+
+impl From<crate::model::CardanoKeyError> for YkadaError {
+    fn from(err: crate::model::CardanoKeyError) -> Self {
+        YkadaError::Domain(DomainError::CardanoKey(err))
+    }
 }
 
 /// Convert yubikey crate errors to our error type

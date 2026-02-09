@@ -3,7 +3,7 @@
 //! This use case orchestrates key generation on a YubiKey device.
 //! It handles device finding, authentication, and key generation.
 
-use crate::error::{DeviceError, YkadaError, YkadaResult};
+use crate::error::YkadaResult;
 use crate::model::ManagementKey;
 use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
 use ed25519_dalek::VerifyingKey;
@@ -44,11 +44,7 @@ where
     let mut device = finder.find_first()?;
 
     // Authenticate with management key
-    device.authenticate(mgmt_key).map_err(|e| {
-        YkadaError::Device(DeviceError::AuthenticationFailed {
-            reason: format!("Management key authentication failed: {}", e),
-        })
-    })?;
+    device.authenticate(mgmt_key)?;
 
     // Generate key
     device.generate_key(config)
@@ -58,7 +54,9 @@ where
 mod tests {
     use super::*;
     use crate::adapters::fake_yubikey::{FakeDeviceFinder, FakeYubiKey};
+    use crate::error::DeviceError;
     use crate::model::{ManagementKey, Pin};
+    use crate::YkadaError;
 
     #[test]
     fn test_generate_key_success() {

@@ -6,3 +6,5 @@ Future improvements and extensions:
 - test yubikey version
 - management key change functionality
 - remove rand - deterministic tests
+- cargo clippy, remove all unwrap and expect
+- 
