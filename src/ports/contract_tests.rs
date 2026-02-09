@@ -220,7 +220,7 @@ pub mod yubikey_contract {
         let child_key = root_key.derive(&path);
 
         child_key.public_key();
-        let secret_key = child_key.to_secret_key();
+        let private_key = child_key.private_key();
 
         let config = KeyConfig {
             slot: crate::model::Slot::KeyManagement,
@@ -228,7 +228,7 @@ pub mod yubikey_contract {
         };
 
         device
-            .import_key(Ed25519PrivateKey::from(secret_key), config)
+            .import_key(private_key, config)
             .expect("Failed to import key");
     }
 }

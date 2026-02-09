@@ -4,7 +4,10 @@ use pbkdf2::pbkdf2_hmac;
 use sha2::Sha512;
 use thiserror::Error;
 
-use crate::model::{DerivationPath, Ed25519PublicKey, SeedPhrase};
+use crate::{
+    model::{DerivationPath, Ed25519PublicKey, SeedPhrase},
+    Ed25519PrivateKey,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CardanoKey(XPrv);
@@ -47,6 +50,13 @@ impl CardanoKey {
         let mut k_l = [0u8; 32];
         k_l.copy_from_slice(&extended_secret[..32]);
         k_l
+    }
+
+    pub fn private_key(&self) -> Ed25519PrivateKey {
+        let extended_secret = self.0.extended_secret_key_bytes();
+        let mut k_l = [0u8; 32];
+        k_l.copy_from_slice(&extended_secret[..32]);
+        Ed25519PrivateKey::from(k_l)
     }
 
     pub fn verifying_key(&self) -> ed25519_dalek::VerifyingKey {
