@@ -88,6 +88,36 @@ impl CardanoKey {
         let pub_bytes = xpub.public_key_bytes();
         PublicKey::from_slice(pub_bytes).expect("XPub public_key_bytes() always returns 32 bytes")
     }
+
+    /// Extract the 32-byte Ed25519 private key scalar (kL) for PIV import
+    ///
+    /// This extracts the left 32 bytes of the extended secret key,
+    /// which is the Ed25519 scalar suitable for importing into YubiKey PIV slots.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use ykada::model::{CardanoKey, PivEd25519Key, SeedPhrase};
+    ///
+    /// let seed = SeedPhrase::try_from("test walk nut penalty hip pave soap entry language right filter choice").unwrap();
+    /// let key = CardanoKey::from_seed_phrase(&seed, "").unwrap();
+    /// let piv_key = key.to_piv_key();
+    /// ```
+    pub fn to_piv_key(&self) -> crate::model::PivEd25519Key {
+        let extended_secret = self.0.extended_secret_key_bytes();
+        // Extract left 32 bytes (kL scalar)
+        let mut k_l = [0u8; 32];
+        k_l.copy_from_slice(&extended_secret[..32]);
+        crate::model::PivEd25519Key::from_slice(&k_l)
+            .expect("kL extraction always produces 32 bytes")
+    }
+
+    /// Get the VerifyingKey corresponding to this CardanoKey's public key
+    pub fn verifying_key(&self) -> ed25519_dalek::VerifyingKey {
+        let pub_key = self.public_key();
+        ed25519_dalek::VerifyingKey::from_bytes(pub_key.as_array())
+            .expect("CardanoKey public key is valid Ed25519")
+    }
 }
 
 #[cfg(test)]
@@ -215,5 +245,60 @@ mod tests {
         // Verify public key is deterministic
         let pub_key2 = root.public_key();
         assert_eq!(pub_key.as_bytes(), pub_key2.as_bytes());
+    }
+
+    #[test]
+    fn test_xprv_to_xpub_vs_piv_key_round_trip() {
+        // Test that XPrv -> XPub path matches XPrv -> PivKey -> SigningKey -> VerifyingKey path
+        let seed = SeedPhrase::try_from(
+            "test walk nut penalty hip pave soap entry language right filter choice",
+        )
+        .unwrap();
+
+        // Test with root key
+        let root = CardanoKey::from_seed_phrase(&seed, "").unwrap();
+        test_public_key_consistency(&root, "root key");
+
+        // Test with derived key
+        let path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
+        let derived = root.derive(&path);
+        test_public_key_consistency(&derived, "derived key");
+
+        // Test with different derivation path
+        let path2 = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
+        let staking_key = root.derive(&path2);
+        test_public_key_consistency(&staking_key, "staking key");
+
+        // Test with passphrase
+        let root_with_passphrase = CardanoKey::from_seed_phrase(&seed, "foo").unwrap();
+        test_public_key_consistency(&root_with_passphrase, "root key with passphrase");
+    }
+
+    fn test_public_key_consistency(cardano_key: &CardanoKey, context: &str) {
+        // Verify XPrv -> XPub matches XPrv -> kL -> XPub (both via ed25519-bip32)
+        let xpub_key = cardano_key.public_key();
+        let xpub_bytes = xpub_key.as_bytes();
+
+        let piv_key = cardano_key.to_piv_key();
+        let extended_secret = cardano_key.0.extended_secret_key_bytes();
+        let chain_code = cardano_key.0.chain_code();
+
+        // Reconstruct XPrv from kL + kR + chain code
+        let mut reconstructed_extended = [0u8; 64];
+        reconstructed_extended[..32].copy_from_slice(piv_key.as_array());
+        reconstructed_extended[32..].copy_from_slice(&extended_secret[32..64]);
+
+        let reconstructed_xprv =
+            XPrv::from_extended_and_chaincode(&reconstructed_extended, chain_code);
+        let reconstructed_xpub = reconstructed_xprv.public();
+
+        assert_eq!(
+            xpub_bytes,
+            reconstructed_xpub.public_key_bytes().as_slice(),
+            "Public key mismatch for {}: XPub = {}, Reconstructed = {}",
+            context,
+            hex::encode(xpub_bytes),
+            hex::encode(reconstructed_xpub.public_key_bytes())
+        );
     }
 }

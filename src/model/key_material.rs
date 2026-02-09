@@ -159,6 +159,48 @@ impl From<SigningKey> for KeyPair {
 #[derive(Clone, PartialEq, Eq)]
 pub struct DerPrivateKey(pub Vec<u8>);
 
+/// PIV Ed25519 private key (32 bytes: kL scalar)
+///
+/// This represents the left 32 bytes of an Ed25519 extended private key,
+/// suitable for importing into YubiKey PIV slots.
+#[derive(Clone, PartialEq, Eq)]
+pub struct PivEd25519Key([u8; 32]);
+
+impl PivEd25519Key {
+    /// Create a new PivEd25519Key from bytes
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the slice length is not exactly 32 bytes
+    pub fn from_slice(key: &[u8]) -> Result<Self, KeyMaterialError> {
+        if key.len() != 32 {
+            return Err(KeyMaterialError::InvalidLength {
+                expected: 32,
+                actual: key.len(),
+            });
+        }
+        let mut bytes = [0u8; 32];
+        bytes.copy_from_slice(key);
+        Ok(Self(bytes))
+    }
+
+    /// Get the key as a byte slice
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    /// Get the key as an array reference
+    pub fn as_array(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
+
+impl fmt::Debug for PivEd25519Key {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PivEd25519Key([REDACTED])")
+    }
+}
+
 /// Errors that can occur when working with key material
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum KeyMaterialError {

@@ -1,7 +1,7 @@
 //! KeyManager trait - capability to manage keys (import, generate)
 
 use crate::error::YkadaResult;
-use crate::model::{PinPolicy, Slot, TouchPolicy};
+use crate::model::{PinPolicy, PivEd25519Key, Slot, TouchPolicy};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 
 /// Configuration for key import/generation
@@ -66,4 +66,22 @@ pub trait KeyManager {
     /// - Slot is already occupied
     /// - Key generation fails
     fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<VerifyingKey>;
+
+    /// Import a 32-byte Ed25519 private key (kL scalar) into the YubiKey
+    ///
+    /// This method is used for importing keys derived from seed phrases.
+    /// The key is imported as raw bytes (curve value) into a PIV slot.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The 32-byte Ed25519 private key (kL scalar)
+    /// * `config` - Configuration for key storage
+    ///
+    /// # Errors
+    ///
+    /// Returns errors if:
+    /// - Device is not authenticated
+    /// - Slot is already occupied
+    /// - Key import fails
+    fn import_cv_key(&mut self, key: PivEd25519Key, config: KeyConfig) -> YkadaResult<()>;
 }

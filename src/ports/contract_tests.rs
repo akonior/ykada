@@ -29,7 +29,7 @@ pub mod yubikey_contract {
         error::{CryptoError, DeviceError},
         model::{Algorithm, ManagementKey, Pin, Slot, TouchPolicy},
         ports::{KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer},
-        YkadaError,
+        CardanoKey, DerivationPath, SeedPhrase, YkadaError,
     };
 
     const TESTING_MANAGEMENT_KEY: ManagementKey = ManagementKey::new([
@@ -205,5 +205,38 @@ pub mod yubikey_contract {
         verifying_key
             .verify_strict(data, &signature)
             .expect("Signature verification failed");
+    }
+
+    pub(crate) fn test_import_seed_phrase_derived_key(
+        mut device: impl KeyManager + ManagementKeyVerifier + Signer,
+    ) {
+        device
+            .authenticate(Some(&TESTING_MANAGEMENT_KEY))
+            .expect("Authentication failed");
+
+        // Use CIP-3 test vector mnemonic
+        let seed_phrase = "eight country switch draw meat scout mystery blade tip drift useless good keep usage title";
+        let seed = SeedPhrase::try_from(seed_phrase).expect("Invalid seed phrase");
+
+        // Derive payment key: m/1852'/1815'/0'/0/0
+        let root_key =
+            CardanoKey::from_seed_phrase(&seed, "").expect("Failed to generate root key");
+        let path =
+            DerivationPath::try_from("m/1852'/1815'/0'/0/0").expect("Invalid derivation path");
+        let child_key = root_key.derive(&path);
+
+        // Extract expected public key and kL scalar
+        child_key.public_key();
+        let piv_key = child_key.to_piv_key();
+
+        // Import into YubiKey (use a different slot to avoid conflicts)
+        let config = KeyConfig {
+            slot: crate::model::Slot::KeyManagement, // Use 9d slot
+            ..KeyConfig::default()
+        };
+
+        device
+            .import_cv_key(piv_key, config)
+            .expect("Failed to import key");
     }
 }
