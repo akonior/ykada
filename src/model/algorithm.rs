@@ -1,33 +1,19 @@
-//! Algorithm type for cryptographic algorithms supported by YubiKey
-
 use thiserror::Error;
 
-/// Cryptographic algorithm supported by YubiKey PIV
-///
-/// This type provides a type-safe way to specify cryptographic algorithms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Algorithm {
-    /// Ed25519 (EdDSA with Curve25519)
     Ed25519,
-    /// RSA 1024-bit
     Rsa1024,
-    /// RSA 2048-bit
     Rsa2048,
-    /// ECDSA P-256
     EcdsaP256,
-    /// ECDSA P-384
     EcdsaP384,
 }
 
 impl Algorithm {
-    /// Get the default algorithm for Cardano
-    ///
-    /// Cardano uses Ed25519 for signatures
     pub fn default_cardano() -> Self {
         Self::Ed25519
     }
 
-    /// Convert to yubikey crate's AlgorithmId
     pub fn to_yubikey_algorithm_id(self) -> yubikey::piv::AlgorithmId {
         match self {
             Algorithm::Ed25519 => yubikey::piv::AlgorithmId::Ed25519,
@@ -38,11 +24,6 @@ impl Algorithm {
         }
     }
 
-    /// Convert from yubikey crate's AlgorithmId
-    ///
-    /// # Errors
-    ///
-    /// Returns `AlgorithmError::Unsupported` if the algorithm is not supported by ykada
     pub fn from_yubikey_algorithm_id(
         alg: yubikey::piv::AlgorithmId,
     ) -> Result<Self, AlgorithmError> {
@@ -59,10 +40,8 @@ impl Algorithm {
     }
 }
 
-/// Errors that can occur when working with algorithms
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum AlgorithmError {
-    /// Algorithm is not supported by ykada
     #[error("Algorithm not supported: {algorithm}")]
     Unsupported { algorithm: String },
 }

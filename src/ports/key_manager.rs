@@ -1,17 +1,11 @@
-//! KeyManager trait - capability to manage keys (import, generate)
-
 use crate::error::YkadaResult;
 use crate::model::{PinPolicy, Slot, TouchPolicy};
 use ed25519_dalek::{SecretKey, VerifyingKey};
 
-/// Configuration for key import/generation
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyConfig {
-    /// Slot to store the key in
     pub slot: Slot,
-    /// PIN policy for key usage
     pub pin_policy: PinPolicy,
-    /// Touch policy for key usage
     pub touch_policy: TouchPolicy,
 }
 
@@ -25,45 +19,8 @@ impl Default for KeyConfig {
     }
 }
 
-/// Capability to manage keys (import, generate, list)
-///
-/// This trait abstracts key management operations on YubiKey.
-/// Works with any key storage mechanism (PIV slots, OpenPGP keys, etc.)
 pub trait KeyManager {
-    /// Import a secret key into the YubiKey
-    ///
-    /// # Arguments
-    ///
-    /// * `key` - The secret key to import
-    /// * `config` - Configuration for key storage
-    ///
-    /// # Returns
-    ///
-    /// The verifying key (public key) corresponding to the imported key
-    ///
-    /// # Errors
-    ///
-    /// Returns errors if:
-    /// - Device is not authenticated
-    /// - Slot is already occupied
-    /// - Key import fails
     fn import_key(&mut self, key: SecretKey, config: KeyConfig) -> YkadaResult<()>;
 
-    /// Generate a new keypair on the YubiKey
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - Configuration for key generation and storage
-    ///
-    /// # Returns
-    ///
-    /// The verifying key (public key) of the generated keypair
-    ///
-    /// # Errors
-    ///
-    /// Returns errors if:
-    /// - Device is not authenticated
-    /// - Slot is already occupied
-    /// - Key generation fails
     fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<VerifyingKey>;
 }

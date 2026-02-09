@@ -1,32 +1,21 @@
-//! Policy types for YubiKey key usage constraints
-
 use thiserror::Error;
 
-/// PIN policy for key usage
-///
-/// Determines when a PIN is required to use a key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PinPolicy {
-    /// PIN is never required (not recommended for sensitive keys)
     Never,
-    /// PIN is required once per session
     Once,
-    /// PIN is required for every operation (most secure)
     Always,
 }
 
 impl PinPolicy {
-    /// Get the default PIN policy (Always for maximum security)
     pub fn default() -> Self {
         Self::Always
     }
 
-    /// Get the recommended policy for Cardano wallet keys
     pub fn recommended_cardano() -> Self {
         Self::Always
     }
 
-    /// Convert to yubikey crate's PinPolicy
     pub fn to_yubikey_pin_policy(self) -> yubikey::PinPolicy {
         match self {
             PinPolicy::Never => yubikey::PinPolicy::Never,
@@ -35,11 +24,6 @@ impl PinPolicy {
         }
     }
 
-    /// Convert from yubikey crate's PinPolicy
-    ///
-    /// # Errors
-    ///
-    /// Returns `PolicyError::UnsupportedPinPolicy` if the policy is not supported
     pub fn from_yubikey_pin_policy(policy: yubikey::PinPolicy) -> Result<Self, PolicyError> {
         match policy {
             yubikey::PinPolicy::Never => Ok(PinPolicy::Never),
@@ -52,31 +36,22 @@ impl PinPolicy {
     }
 }
 
-/// Touch policy for key usage
-///
-/// Determines when physical touch is required to use a key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TouchPolicy {
-    /// Touch is never required
     Never,
-    /// Touch is required for every operation
     Always,
-    /// Touch is cached for 15 seconds after first touch
     Cached,
 }
 
 impl TouchPolicy {
-    /// Get the default touch policy
     pub fn default() -> Self {
         Self::Never
     }
 
-    /// Get the recommended policy for Cardano wallet keys (Always for max security)
     pub fn recommended_cardano() -> Self {
         Self::Always
     }
 
-    /// Convert to yubikey crate's TouchPolicy
     pub fn to_yubikey_touch_policy(self) -> yubikey::TouchPolicy {
         match self {
             TouchPolicy::Never => yubikey::TouchPolicy::Never,
@@ -85,11 +60,6 @@ impl TouchPolicy {
         }
     }
 
-    /// Convert from yubikey crate's TouchPolicy
-    ///
-    /// # Errors
-    ///
-    /// Returns `PolicyError::UnsupportedTouchPolicy` if the policy is not supported
     pub fn from_yubikey_touch_policy(policy: yubikey::TouchPolicy) -> Result<Self, PolicyError> {
         match policy {
             yubikey::TouchPolicy::Never => Ok(TouchPolicy::Never),
@@ -102,14 +72,11 @@ impl TouchPolicy {
     }
 }
 
-/// Errors that can occur when working with policies
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum PolicyError {
-    /// PIN policy is not supported by ykada
     #[error("PIN policy not supported: {policy}")]
     UnsupportedPinPolicy { policy: String },
 
-    /// Touch policy is not supported by ykada
     #[error("Touch policy not supported: {policy}")]
     UnsupportedTouchPolicy { policy: String },
 }

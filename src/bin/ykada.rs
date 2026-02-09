@@ -23,25 +23,19 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Load a private key (DER) into YubiKey
     ImportKey {
         #[command(flatten)]
         key_options: KeyOptions,
-        /// BIP39 seed phrase (mnemonic). If provided, imports from seed instead of DER.
         #[arg(long)]
         seed: Option<String>,
-        /// Passphrase for seed phrase (default: empty)
         #[arg(long, default_value = "")]
         passphrase: String,
-        /// Derivation path (default: m/1852'/1815'/0'/0/0)
         #[arg(long)]
         path: Option<String>,
     },
 
-    /// Sign data provided via stdin
     Sign,
 
-    /// Generate a new Ed25519 keypair on the YubiKey (Cardano only)
     Generate {
         #[command(flatten)]
         key_options: KeyOptions,
@@ -52,19 +46,15 @@ pub enum Commands {
 
 #[derive(clap::Args, Debug)]
 pub struct KeyOptions {
-    /// PIV slot to store the key (9a=Authentication, 9c=Signature, 9d=KeyManagement, 9e=CardAuthentication)
     #[arg(long, default_value = "signature")]
     pub slot: SlotArg,
 
-    /// PIN policy (never, once, always)
     #[arg(long, default_value = "always")]
     pub pin_policy: PinPolicyArg,
 
-    /// Touch policy (never, always, cached)
     #[arg(long, default_value = "always")]
     pub touch_policy: TouchPolicyArg,
 
-    /// Management key in hex format (48 hex chars = 24 bytes). Uses default if not provided
     #[arg(long)]
     pub mgmt_key: Option<String>,
 }
@@ -145,7 +135,6 @@ fn main() -> anyhow::Result<()> {
             let mgmt_key_opt = key_options.mgmt_key.map(|s| s.try_into()).transpose()?;
 
             if let Some(seed_phrase) = seed {
-                // Import from seed phrase
                 let verifying_key = ykada::import_private_key_from_seed_phrase(
                     &seed_phrase,
                     &passphrase,
@@ -155,11 +144,9 @@ fn main() -> anyhow::Result<()> {
                 )
                 .context("failed to import key from seed phrase")?;
 
-                // Output public key as hex
                 let public_key_hex = hex::encode(verifying_key.as_bytes());
                 println!("{}", public_key_hex);
             } else {
-                // Import from DER (existing behavior)
                 let mut buf = Vec::new();
                 io::stdin().read_to_end(&mut buf)?;
                 let der_key = DerPrivateKey(buf);
@@ -185,7 +172,6 @@ fn main() -> anyhow::Result<()> {
 
             match ykada::generate_key_with_config(config, mgmt_key_opt.as_ref()) {
                 Ok(verifying_key) => {
-                    // Output public key as hex
                     let public_key_hex = hex::encode(verifying_key.as_bytes());
                     println!("{}", public_key_hex);
                 }
@@ -215,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(not(feature = "hardware-tests"), ignore)] // Requires YubiKey hardware - enable with: --features hardware-tests
+    #[cfg_attr(not(feature = "hardware-tests"), ignore)]
     fn test_cli_generate() {
         let mut cmd = Command::cargo_bin("ykada").unwrap();
         let result = cmd

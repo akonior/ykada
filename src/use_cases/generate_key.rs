@@ -1,36 +1,8 @@
-//! Generate key use case
-//!
-//! This use case orchestrates key generation on a YubiKey device.
-//! It handles device finding, authentication, and key generation.
-
 use crate::error::YkadaResult;
 use crate::model::ManagementKey;
 use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
 use ed25519_dalek::VerifyingKey;
 
-/// Generate a new Ed25519 keypair on a YubiKey device
-///
-/// This function orchestrates the complete key generation workflow:
-/// 1. Find the first available YubiKey device
-/// 2. Authenticate with the management key
-/// 3. Generate a new keypair in the specified slot
-///
-/// # Arguments
-///
-/// * `finder` - Device finder implementation
-/// * `config` - Configuration for key generation (slot, algorithm, policies)
-/// * `mgmt_key` - Optional management key for authentication (uses default if None)
-///
-/// # Returns
-///
-/// The verifying key (public key) of the generated keypair
-///
-/// # Errors
-///
-/// Returns errors if:
-/// - No YubiKey device is found
-/// - Authentication fails
-/// - Key generation fails (e.g., slot already occupied)
 pub fn generate_key<F>(
     finder: &F,
     config: KeyConfig,
@@ -40,13 +12,10 @@ where
     F: DeviceFinder,
     F::Device: KeyManager + crate::ports::ManagementKeyVerifier,
 {
-    // Find device
     let mut device = finder.find_first()?;
 
-    // Authenticate with management key
     device.authenticate(mgmt_key)?;
 
-    // Generate key
     device.generate_key(config)
 }
 

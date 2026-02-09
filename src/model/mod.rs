@@ -1,8 +1,3 @@
-//! Domain model entities
-//!
-//! This module contains domain entities (value objects, domain types).
-//! These are pure data structures with validation logic.
-
 mod algorithm;
 mod cardano_key;
 mod derivation_path;
