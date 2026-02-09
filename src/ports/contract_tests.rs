@@ -71,11 +71,10 @@ pub mod yubikey_contract {
     }
 
     pub(crate) fn test_import_key_fail_not_authenticated(mut device: impl KeyManager) {
-        let secret_bytes = [0u8; 32];
-        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
+        let secret_key = SecretKey::from([0u8; 32]);
         let config = KeyConfig::default();
 
-        let result = device.import_key(signing_key, config.clone());
+        let result = device.import_key(secret_key, config.clone());
 
         assert!(matches!(
             result.unwrap_err(),
@@ -88,11 +87,10 @@ pub mod yubikey_contract {
             .authenticate(Some(&TESTING_MANAGEMENT_KEY))
             .expect("Authentication failed");
 
-        let secret_bytes = [0u8; 32];
-        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
+        let secret_key = SecretKey::from([0u8; 32]);
         let config = KeyConfig::default();
 
-        let result = device.import_key(signing_key, config.clone());
+        let result = device.import_key(secret_key, config.clone());
 
         assert!(result.is_ok(), "error: {:?}", result.err());
     }
@@ -135,11 +133,12 @@ pub mod yubikey_contract {
         let secret_bytes = [0u8; 32];
         let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
         let verifying_key = signing_key.verifying_key();
+        let secret_key = SecretKey::from(*signing_key.as_bytes());
 
         let mut config = KeyConfig::default();
         config.touch_policy = TouchPolicy::Never;
 
-        let result = device.import_key(signing_key, config.clone());
+        let result = device.import_key(secret_key, config.clone());
 
         assert!(result.is_ok(), "error: {:?}", result.err());
 
