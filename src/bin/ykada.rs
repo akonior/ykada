@@ -213,6 +213,10 @@ mod tests {
         println!("stdout: {}", stdout);
 
         let trimmed = stdout.trim();
-        assert_eq!(trimmed.len(), 64, "Public key should be 64 hex characters");
+        assert!(
+            trimmed.starts_with("Generated verifying key: addr_vk1"),
+            "Public key should start with 'addr_vk', got: {}",
+            trimmed
+        );
     }
 }

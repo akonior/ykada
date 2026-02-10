@@ -25,6 +25,8 @@ macro_rules! contract_tests_for {
 pub mod yubikey_contract {
     use ed25519_dalek::{SecretKey, SigningKey};
 
+    use std::str::FromStr;
+
     use crate::{
         error::{CryptoError, DeviceError},
         model::{Algorithm, ManagementKey, Pin, Slot, TouchPolicy},

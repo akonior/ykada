@@ -1,4 +1,5 @@
 use std::fmt;
+use std::str::FromStr;
 use thiserror::Error;
 
 #[derive(Clone, PartialEq, Eq)]
@@ -21,16 +22,22 @@ impl Pin {
         Ok(Self(pin))
     }
 
-    pub fn from_str(pin: &str) -> Result<Self, PinError> {
-        Self::new(pin.as_bytes().to_vec())
-    }
-
-    pub fn default() -> Self {
-        Self(Self::DEFAULT.to_vec())
-    }
-
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
+    }
+}
+
+impl Default for Pin {
+    fn default() -> Self {
+        Self(Self::DEFAULT.to_vec())
+    }
+}
+
+impl FromStr for Pin {
+    type Err = PinError;
+
+    fn from_str(pin: &str) -> Result<Self, Self::Err> {
+        Self::new(pin.as_bytes().to_vec())
     }
 }
 
