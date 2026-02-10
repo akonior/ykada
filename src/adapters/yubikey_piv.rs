@@ -1,5 +1,5 @@
 use crate::error::{CryptoError, DeviceError, KeyManagementError, YkadaError, YkadaResult};
-use crate::model::{Algorithm, ManagementKey, ManagementKeyError, Pin, Slot};
+use crate::model::{Algorithm, ManagementKey, Pin, Slot};
 use crate::ports::{
     DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
@@ -17,17 +17,9 @@ impl DeviceFinder for PivDeviceFinder {
     type Device = PivYubiKey;
 
     fn find_first(&self) -> YkadaResult<Self::Device> {
-        let mut readers = Context::open().map_err(|e| {
-            YkadaError::Device(DeviceError::ConnectionFailed {
-                reason: format!("Failed to open PC/SC context: {}", e),
-            })
-        })?;
+        let mut readers = Context::open()?;
 
-        for reader in readers.iter().map_err(|e| {
-            YkadaError::Device(DeviceError::ConnectionFailed {
-                reason: format!("Failed to iterate readers: {}", e),
-            })
-        })? {
+        for reader in readers.iter()? {
             if let Ok(yk) = reader.open() {
                 debug!("Connected to YubiKey: {:?}", reader.name());
                 return Ok(PivYubiKey::new(yk));
@@ -63,15 +55,9 @@ impl PivYubiKey {
 impl ManagementKeyVerifier for PivYubiKey {
     fn authenticate(&mut self, mgmt_key: Option<&ManagementKey>) -> YkadaResult<()> {
         let mgm_key = if let Some(key) = mgmt_key {
-            MgmKey::try_from(key).map_err(|e: ManagementKeyError| {
-                YkadaError::Domain(crate::error::DomainError::ManagementKey(e))
-            })?
+            MgmKey::try_from(key)?
         } else {
-            MgmKey::get_default(&self.device).map_err(|e| {
-                YkadaError::Device(DeviceError::AuthenticationFailed {
-                    reason: format!("Failed to get default management key: {}", e),
-                })
-            })?
+            MgmKey::get_default(&self.device)?
         };
 
         self.device.authenticate(&mgm_key).map_err(|e| {
@@ -118,13 +104,7 @@ impl KeyManager for PivYubiKey {
             key.as_array(),
             config.touch_policy.to_yubikey_touch_policy(),
             config.pin_policy.to_yubikey_pin_policy(),
-        )
-        .map_err(|e| {
-            YkadaError::KeyManagement(KeyManagementError::StoreFailed {
-                destination: format!("slot {:?}", config.slot),
-                reason: format!("Failed to import key: {}", e),
-            })
-        })?;
+        )?;
 
         info!("Key imported successfully to slot {:?}", config.slot);
         Ok(())

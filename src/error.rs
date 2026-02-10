@@ -15,6 +15,30 @@ pub enum YkadaError {
 
     #[error("Key management error: {0}")]
     KeyManagement(#[from] KeyManagementError),
+
+    #[error("PIN validation error: {0}")]
+    Pin(#[from] crate::model::PinError),
+
+    #[error("Slot error: {0}")]
+    Slot(#[from] crate::model::SlotError),
+
+    #[error("Algorithm error: {0}")]
+    Algorithm(#[from] crate::model::AlgorithmError),
+
+    #[error("Policy error: {0}")]
+    Policy(#[from] crate::model::PolicyError),
+
+    #[error("Management Key error: {0}")]
+    ManagementKey(#[from] crate::model::ManagementKeyError),
+
+    #[error("Seed phrase error: {0}")]
+    SeedPhrase(#[from] crate::model::SeedPhraseError),
+
+    #[error("Derivation path error: {0}")]
+    DerivationPath(#[from] crate::model::DerivationPathError),
+
+    #[error("Cardano key error: {0}")]
+    CardanoKey(#[from] crate::model::CardanoKeyError),
 }
 
 #[derive(Error, Debug)]
@@ -105,24 +129,6 @@ pub enum KeyManagementError {
 
     #[error("Failed to store key to {destination}: {reason}")]
     StoreFailed { destination: String, reason: String },
-}
-
-impl From<crate::model::SeedPhraseError> for YkadaError {
-    fn from(err: crate::model::SeedPhraseError) -> Self {
-        YkadaError::Domain(DomainError::SeedPhrase(err))
-    }
-}
-
-impl From<crate::model::DerivationPathError> for YkadaError {
-    fn from(err: crate::model::DerivationPathError) -> Self {
-        YkadaError::Domain(DomainError::DerivationPath(err))
-    }
-}
-
-impl From<crate::model::CardanoKeyError> for YkadaError {
-    fn from(err: crate::model::CardanoKeyError) -> Self {
-        YkadaError::Domain(DomainError::CardanoKey(err))
-    }
 }
 
 impl From<yubikey::Error> for YkadaError {
