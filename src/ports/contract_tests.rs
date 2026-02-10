@@ -28,7 +28,7 @@ pub mod yubikey_contract {
     use std::str::FromStr;
 
     use crate::{
-        error::{CryptoError, DeviceError},
+        error::CryptoError,
         model::{Algorithm, ManagementKey, Pin, Slot, TouchPolicy},
         ports::{KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer},
         CardanoKey, DerivationPath, Ed25519PrivateKey, SeedPhrase, YkadaError,
@@ -49,7 +49,7 @@ pub mod yubikey_contract {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            YkadaError::Device(DeviceError::PinVerificationFailed { .. })
+            YkadaError::YubikeyLib(yubikey::Error::WrongPin { tries: 2 })
         ));
     }
 
@@ -66,10 +66,15 @@ pub mod yubikey_contract {
 
         let result = device.authenticate(Some(&wrong_mgmt_key));
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            YkadaError::Device(DeviceError::AuthenticationFailed { .. })
-        ));
+        let error = result.unwrap_err();
+        assert!(
+            matches!(
+                error,
+                YkadaError::YubikeyLib(yubikey::Error::AuthenticationError)
+            ),
+            "error: {:?}",
+            error
+        );
     }
 
     pub(crate) fn test_import_key_fail_not_authenticated(mut device: impl KeyManager) {
@@ -77,11 +82,16 @@ pub mod yubikey_contract {
         let config = KeyConfig::default();
 
         let result = device.import_key(secret_key, config.clone());
+        let error = result.unwrap_err();
 
-        assert!(matches!(
-            result.unwrap_err(),
-            YkadaError::Device(DeviceError::AuthenticationFailed { .. })
-        ));
+        assert!(
+            matches!(
+                error,
+                YkadaError::YubikeyLib(yubikey::Error::AuthenticationError)
+            ),
+            "error: {:?}",
+            error
+        );
     }
 
     pub(crate) fn test_import_key_success(mut device: impl KeyManager + ManagementKeyVerifier) {
@@ -121,7 +131,7 @@ pub mod yubikey_contract {
         );
 
         match result.unwrap_err() {
-            YkadaError::Device(DeviceError::PinVerificationFailed { .. }) => { /* ok */ }
+            YkadaError::YubikeyLib(yubikey::Error::WrongPin { tries: 2 }) => { /* ok */ }
             other => panic!("expected error: {other:?}"),
         }
     }
@@ -170,7 +180,7 @@ pub mod yubikey_contract {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            YkadaError::Device(DeviceError::AuthenticationFailed { .. })
+            YkadaError::AuthenticationFailed { .. }
         ));
     }
 

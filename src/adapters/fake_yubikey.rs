@@ -1,5 +1,5 @@
 #[cfg(test)]
-use crate::error::{DeviceError, KeyManagementError, YkadaError, YkadaResult};
+use crate::error::{KeyManagementError, YkadaError, YkadaResult};
 #[cfg(test)]
 use crate::model::{Algorithm, ManagementKey, Pin, Slot};
 #[cfg(test)]
@@ -49,8 +49,8 @@ impl PinVerifier for FakeYubiKey {
             self.pin_verified = true;
             Ok(())
         } else {
-            Err(YkadaError::Device(DeviceError::PinVerificationFailed {
-                reason: "Invalid PIN".to_string(),
+            Err(YkadaError::YubikeyLib(yubikey::Error::WrongPin {
+                tries: 2,
             }))
         }
     }
@@ -64,9 +64,7 @@ impl ManagementKeyVerifier for FakeYubiKey {
             self.authenticated = true;
             Ok(())
         } else {
-            Err(YkadaError::Device(DeviceError::AuthenticationFailed {
-                reason: "Invalid Management Key".to_string(),
-            }))
+            Err(YkadaError::YubikeyLib(yubikey::Error::AuthenticationError))
         }
     }
 }
@@ -75,9 +73,7 @@ impl ManagementKeyVerifier for FakeYubiKey {
 impl KeyManager for FakeYubiKey {
     fn import_key(&mut self, key: Ed25519PrivateKey, config: KeyConfig) -> YkadaResult<()> {
         if !self.authenticated {
-            return Err(YkadaError::Device(DeviceError::AuthenticationFailed {
-                reason: "Not authenticated".to_string(),
-            }));
+            return Err(YkadaError::YubikeyLib(yubikey::Error::AuthenticationError));
         }
 
         if self.keys.contains_key(&config.slot) {
@@ -96,9 +92,9 @@ impl KeyManager for FakeYubiKey {
 
     fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<Ed25519PublicKey> {
         if !self.authenticated {
-            return Err(YkadaError::Device(DeviceError::AuthenticationFailed {
+            return Err(YkadaError::AuthenticationFailed {
                 reason: "Not authenticated".to_string(),
-            }));
+            });
         }
 
         use ed25519_dalek::SecretKey;
@@ -150,9 +146,7 @@ impl DeviceFinder for FakeDeviceFinder {
     type Device = FakeYubiKey;
 
     fn find_first(&self) -> YkadaResult<Self::Device> {
-        self.device
-            .clone()
-            .ok_or_else(|| YkadaError::Device(DeviceError::NotFound))
+        self.device.clone().ok_or(YkadaError::NotFound)
     }
 }
 

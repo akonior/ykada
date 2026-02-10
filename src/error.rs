@@ -4,9 +4,6 @@ pub type YkadaResult<T> = Result<T, YkadaError>;
 
 #[derive(Error, Debug)]
 pub enum YkadaError {
-    #[error("YubiKey device error: {0}")]
-    Device(#[from] DeviceError),
-
     #[error("Cryptographic error: {0}")]
     Crypto(#[from] CryptoError),
 
@@ -39,30 +36,15 @@ pub enum YkadaError {
 
     #[error("Cardano key error: {0}")]
     CardanoKey(#[from] crate::model::CardanoKeyError),
-}
 
-#[derive(Error, Debug)]
-pub enum DeviceError {
+    #[error("YubiKey library error: {0}")]
+    YubikeyLib(#[from] yubikey::Error),
+
     #[error("No YubiKey device found - please connect a YubiKey")]
     NotFound,
 
-    #[error("Failed to connect to YubiKey device: {reason}")]
-    ConnectionFailed { reason: String },
-
     #[error("YubiKey authentication failed: {reason}")]
     AuthenticationFailed { reason: String },
-
-    #[error("PIN verification failed: {reason}")]
-    PinVerificationFailed { reason: String },
-
-    #[error("Invalid PIN: attempts remaining: {attempts_remaining}")]
-    InvalidPin { attempts_remaining: u8 },
-
-    #[error("YubiKey is locked - too many failed PIN attempts")]
-    DeviceLocked,
-
-    #[error("YubiKey library error: {0}")]
-    YubikeyLib(String),
 }
 
 #[derive(Error, Debug)]
@@ -131,12 +113,6 @@ pub enum KeyManagementError {
     StoreFailed { destination: String, reason: String },
 }
 
-impl From<yubikey::Error> for YkadaError {
-    fn from(err: yubikey::Error) -> Self {
-        YkadaError::Device(DeviceError::YubikeyLib(err.to_string()))
-    }
-}
-
 impl From<ed25519_dalek::SignatureError> for YkadaError {
     fn from(err: ed25519_dalek::SignatureError) -> Self {
         YkadaError::Crypto(CryptoError::Ed25519(err.to_string()))
@@ -157,7 +133,7 @@ mod tests {
 
     #[test]
     fn test_error_display() {
-        let err = YkadaError::Device(DeviceError::NotFound);
+        let err = YkadaError::NotFound;
         assert!(err.to_string().contains("No YubiKey device found"));
     }
 
@@ -174,7 +150,7 @@ mod tests {
         let result: YkadaResult<i32> = Ok(42);
         assert_eq!(result.unwrap(), 42);
 
-        let result: YkadaResult<i32> = Err(YkadaError::Device(DeviceError::NotFound));
+        let result: YkadaResult<i32> = Err(YkadaError::NotFound);
         assert!(result.is_err());
     }
 }

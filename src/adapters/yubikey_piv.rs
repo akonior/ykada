@@ -1,4 +1,4 @@
-use crate::error::{CryptoError, DeviceError, KeyManagementError, YkadaError, YkadaResult};
+use crate::error::{CryptoError, KeyManagementError, YkadaError, YkadaResult};
 use crate::model::{Algorithm, ManagementKey, Pin, Slot};
 use crate::ports::{
     DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
@@ -26,7 +26,7 @@ impl DeviceFinder for PivDeviceFinder {
             }
         }
 
-        Err(YkadaError::Device(DeviceError::NotFound))
+        Err(YkadaError::NotFound)
     }
 }
 
@@ -60,11 +60,7 @@ impl ManagementKeyVerifier for PivYubiKey {
             MgmKey::get_default(&self.device)?
         };
 
-        self.device.authenticate(&mgm_key).map_err(|e| {
-            YkadaError::Device(DeviceError::AuthenticationFailed {
-                reason: format!("Management key authentication failed: {}", e),
-            })
-        })?;
+        self.device.authenticate(&mgm_key)?;
 
         self.authenticated = true;
         debug!("YubiKey authenticated with management key");
@@ -74,10 +70,7 @@ impl ManagementKeyVerifier for PivYubiKey {
 
 impl PinVerifier for PivYubiKey {
     fn verify_pin(&mut self, pin: &Pin) -> YkadaResult<()> {
-        self.device.verify_pin(pin.as_bytes()).map_err(|e| {
-            let reason = format!("PIN verification failed: {}", e);
-            YkadaError::Device(DeviceError::PinVerificationFailed { reason })
-        })?;
+        self.device.verify_pin(pin.as_bytes())?;
 
         debug!("PIN verified successfully");
         Ok(())
@@ -112,9 +105,9 @@ impl KeyManager for PivYubiKey {
 
     fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<Ed25519PublicKey> {
         if !self.authenticated {
-            return Err(YkadaError::Device(DeviceError::AuthenticationFailed {
+            return Err(YkadaError::AuthenticationFailed {
                 reason: "Not authenticated".to_string(),
-            }));
+            });
         }
 
         let slot_id = config.slot.to_yubikey_slot_id();

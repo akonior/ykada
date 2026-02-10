@@ -24,7 +24,6 @@ where
 mod tests {
     use super::*;
     use crate::adapters::fake_yubikey::{FakeDeviceFinder, FakeYubiKey};
-    use crate::error::DeviceError;
     use crate::model::{ManagementKey, Pin};
     use crate::YkadaError;
 
@@ -54,10 +53,7 @@ mod tests {
         let result = generate_key_use_case(&finder, config, None);
 
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            YkadaError::Device(DeviceError::NotFound)
-        ));
+        assert!(matches!(result.unwrap_err(), YkadaError::NotFound));
     }
 
     #[test]
@@ -75,7 +71,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            YkadaError::Device(DeviceError::AuthenticationFailed { .. })
+            YkadaError::YubikeyLib(yubikey::Error::AuthenticationError)
         ));
     }
 }
