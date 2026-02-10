@@ -116,6 +116,9 @@ fn main() -> anyhow::Result<()> {
 
     tracing_subscriber::fmt()
         .with_max_level(cli.verbosity)
+        .without_time()
+        .with_target(true)
+        .with_level(true)
         .init();
 
     match cli.command {
