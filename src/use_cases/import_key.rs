@@ -1,10 +1,10 @@
 use crate::ports::{KeyConfig, ManagementKeyVerifier};
 use ed25519_dalek::pkcs8::DecodePrivateKey;
-use ed25519_dalek::{SecretKey, SigningKey};
+use ed25519_dalek::SigningKey;
 use tracing::debug;
 
 use crate::ports::{DeviceFinder, KeyManager};
-use crate::{DerPrivateKey, Ed25519PrivateKey, Ed25519PublicKey, ManagementKey, YkadaResult};
+use crate::{DerPrivateKey, Ed25519PublicKey, ManagementKey, YkadaResult};
 
 pub fn import_private_key_in_der_format_use_case<F>(
     finder: &F,
@@ -17,7 +17,7 @@ where
     F::Device: KeyManager + ManagementKeyVerifier,
 {
     let signing_key = SigningKey::from_pkcs8_der(der.0.as_slice())?;
-    let secret_key = SecretKey::from(*signing_key.as_bytes());
+    let secret_key = signing_key.as_bytes();
 
     debug!("Imported private key from DER: {:?}", signing_key);
 
@@ -25,7 +25,7 @@ where
 
     device.authenticate(mgmt_key)?;
 
-    device.import_key(Ed25519PrivateKey::from(secret_key), config)?;
+    device.import_key(secret_key.into(), config)?;
 
     debug!("Loaded private key to YubiKey");
 
