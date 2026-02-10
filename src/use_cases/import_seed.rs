@@ -1,6 +1,7 @@
 use crate::logic::derive_private_key;
 use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
-use crate::{Ed25519PublicKey, ManagementKey, YkadaResult};
+use crate::{ManagementKey, YkadaResult};
+use ed25519_dalek::VerifyingKey;
 use tracing::debug;
 
 pub fn import_private_key_from_seed_phrase_use_case<F>(
@@ -10,7 +11,7 @@ pub fn import_private_key_from_seed_phrase_use_case<F>(
     path: Option<&str>,
     config: KeyConfig,
     mgmt_key: Option<&ManagementKey>,
-) -> YkadaResult<Ed25519PublicKey>
+) -> YkadaResult<VerifyingKey>
 where
     F: DeviceFinder,
     F::Device: KeyManager + ManagementKeyVerifier,
@@ -24,7 +25,7 @@ where
     device.import_key(private_key, config)?;
 
     debug!("Key imported successfully");
-    Ok(verifying_key.into())
+    Ok(verifying_key)
 }
 
 #[cfg(test)]

@@ -1,12 +1,11 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
 use clap_verbosity_flag::{Verbosity, WarnLevel};
-use hex;
 use std::io::{self, Read, Write};
 use tracing::error;
 
 use ykada::{
-    api::{PinPolicy, Slot, TouchPolicy},
+    api::{Bech32Encodable, PinPolicy, Slot, TouchPolicy},
     DerPrivateKey,
 };
 
@@ -144,8 +143,7 @@ fn main() -> anyhow::Result<()> {
                 )
                 .context("failed to import key from seed phrase")?;
 
-                let public_key_hex = hex::encode(verifying_key.as_bytes());
-                println!("{}", public_key_hex);
+                println!("Imported verifying key: {}", verifying_key.to_bech32()?);
             } else {
                 let mut buf = Vec::new();
                 io::stdin().read_to_end(&mut buf)?;
@@ -172,8 +170,7 @@ fn main() -> anyhow::Result<()> {
 
             match ykada::generate_key_with_config(config, mgmt_key_opt.as_ref()) {
                 Ok(verifying_key) => {
-                    let public_key_hex = hex::encode(verifying_key.as_bytes());
-                    println!("{}", public_key_hex);
+                    println!("Generated verifying key: {}", verifying_key.to_bech32()?);
                 }
                 Err(e) => {
                     error!("Failed to generate key: {}", e);

@@ -1,17 +1,17 @@
 use crate::ports::{KeyConfig, ManagementKeyVerifier};
 use ed25519_dalek::pkcs8::DecodePrivateKey;
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use tracing::debug;
 
 use crate::ports::{DeviceFinder, KeyManager};
-use crate::{DerPrivateKey, Ed25519PublicKey, ManagementKey, YkadaResult};
+use crate::{DerPrivateKey, ManagementKey, YkadaResult};
 
 pub fn import_private_key_in_der_format_use_case<F>(
     finder: &F,
     der: DerPrivateKey,
     config: KeyConfig,
     mgmt_key: Option<&ManagementKey>,
-) -> YkadaResult<Ed25519PublicKey>
+) -> YkadaResult<VerifyingKey>
 where
     F: DeviceFinder,
     F::Device: KeyManager + ManagementKeyVerifier,
@@ -29,7 +29,7 @@ where
 
     debug!("Loaded private key to YubiKey");
 
-    Ok(signing_key.verifying_key().into())
+    Ok(signing_key.verifying_key())
 }
 
 #[cfg(test)]
@@ -67,6 +67,6 @@ mod tests {
 
         assert!(result.is_ok(), "error: {:?}", result.err());
         let verifying_key = result.unwrap();
-        assert_eq!(verifying_key, expected_verifying_key.into());
+        assert_eq!(verifying_key, expected_verifying_key);
     }
 }

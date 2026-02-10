@@ -1,13 +1,13 @@
 use crate::error::YkadaResult;
 use crate::model::ManagementKey;
 use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
-use crate::Ed25519PublicKey;
+use ed25519_dalek::VerifyingKey;
 
 pub fn generate_key_use_case<F>(
     finder: &F,
     config: KeyConfig,
     mgmt_key: Option<&ManagementKey>,
-) -> YkadaResult<Ed25519PublicKey>
+) -> YkadaResult<VerifyingKey>
 where
     F: DeviceFinder,
     F::Device: KeyManager + crate::ports::ManagementKeyVerifier,
@@ -16,7 +16,8 @@ where
 
     device.authenticate(mgmt_key)?;
 
-    device.generate_key(config)
+    let public_key = device.generate_key(config)?;
+    Ok(public_key.to_verifying_key())
 }
 
 #[cfg(test)]
