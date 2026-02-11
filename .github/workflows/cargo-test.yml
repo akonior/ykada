@@ -33,15 +33,3 @@ jobs:
 
       - name: Lint with clippy
         run: cargo clippy --all-targets --all-features --locked -- --deny warnings
-
-      # - name: Install cargo utils
-      #   run: cargo install cargo-audit cargo-deny cargo-tarpaulin cargo-chef
-
-      # - name: Run cargo audit
-      #   run: cargo audit
-
-      # - name: Run cargo deny
-      #   run: cargo deny check
-
-      # - name: Run cargo tarpaulin
-      #   run: cargo tarpaulin --fail-under 80
