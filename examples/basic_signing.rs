@@ -4,8 +4,6 @@
 //
 // Note: This example requires a YubiKey to be connected
 
-use ykada;
-
 fn main() -> anyhow::Result<()> {
     println!("YubiKey Basic Signing Example");
     println!("==============================\n");

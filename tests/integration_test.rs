@@ -1,5 +1,3 @@
-use ykada;
-
 #[test]
 fn test_initialize_yubikey_sign_data_and_independently_verify() {
     let verifying_key = ykada::initialize_yubikey();
