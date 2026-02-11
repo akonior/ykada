@@ -1,5 +1,5 @@
 #[cfg(test)]
-use crate::error::{KeyManagementError, YkadaError, YkadaResult};
+use crate::error::{YkadaError, YkadaResult};
 #[cfg(test)]
 use crate::model::{Algorithm, ManagementKey, Pin, Slot};
 #[cfg(test)]
@@ -74,14 +74,6 @@ impl KeyManager for FakeYubiKey {
     fn import_key(&mut self, key: Ed25519PrivateKey, config: KeyConfig) -> YkadaResult<()> {
         if !self.authenticated {
             return Err(YkadaError::YubikeyLib(yubikey::Error::AuthenticationError));
-        }
-
-        if self.keys.contains_key(&config.slot) {
-            return Err(YkadaError::KeyManagement(
-                KeyManagementError::SlotOccupied {
-                    slot: format!("{:?}", config.slot),
-                },
-            ));
         }
 
         let signing_key = SigningKey::from_bytes(&key.as_array());

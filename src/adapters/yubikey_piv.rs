@@ -1,4 +1,4 @@
-use crate::error::{CryptoError, KeyManagementError, YkadaError, YkadaResult};
+use crate::error::{YkadaError, YkadaResult};
 use crate::model::{Algorithm, ManagementKey, Pin, Slot};
 use crate::ports::{
     DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
@@ -126,40 +126,31 @@ impl KeyManager for PivYubiKey {
             algorithm_id,
             pin_policy,
             touch_policy,
-        )
-        .map_err(|e| {
-            YkadaError::KeyManagement(KeyManagementError::StoreFailed {
-                destination: "YubiKey".to_string(),
-                reason: format!("Key generation failed: {}", e),
-            })
-        })?;
+        )?;
 
         info!("Key generated successfully in slot {:?}", slot_id);
 
         let public_key_bytes = spki.subject_public_key.raw_bytes();
 
         if public_key_bytes.len() != 32 {
-            return Err(YkadaError::Crypto(CryptoError::InvalidKeyFormat {
+            return Err(YkadaError::InvalidKeyFormat {
                 format: format!(
                     "Expected 32 bytes for Ed25519 public key, got {}",
                     public_key_bytes.len()
                 ),
-            }));
+            });
         }
 
-        let public_key_array: [u8; 32] = public_key_bytes[..32].try_into().map_err(|_| {
-            YkadaError::Crypto(CryptoError::InvalidKeyFormat {
-                format: "Failed to convert public key bytes to array".to_string(),
-            })
-        })?;
+        let public_key_array: [u8; 32] =
+            public_key_bytes[..32]
+                .try_into()
+                .map_err(|_| YkadaError::InvalidKeyFormat {
+                    format: "Failed to convert public key bytes to array".to_string(),
+                })?;
 
-        VerifyingKey::from_bytes(&public_key_array)
-            .map_err(|e| {
-                YkadaError::Crypto(CryptoError::InvalidKeyFormat {
-                    format: format!("Invalid Ed25519 public key: {}", e),
-                })
-            })
-            .map(Ed25519PublicKey::from)
+        let verifying_key = VerifyingKey::from_bytes(&public_key_array)?;
+
+        Ok(verifying_key.into())
     }
 }
 
