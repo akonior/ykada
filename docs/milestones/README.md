@@ -9,5 +9,5 @@ This section contains the documentation and summary for project milestones.
 ## Milestone 2
 
 Demo evidence:
-![demo](../demo.mov)
+![demo](../demo.webm)
 
