@@ -9,5 +9,5 @@ This section contains the documentation and summary for project milestones.
 ## Milestone 2
 
 Demo evidence:
-![Demo](../demo.mp4)
+<video src="../demo.mp4" controls preload></video>
 
