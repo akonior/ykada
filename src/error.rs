@@ -45,30 +45,18 @@ pub enum YkadaError {
 
     #[error("YubiKey authentication failed: {reason}")]
     AuthenticationFailed { reason: String },
+
+    #[error("Ed25519 signature error: {0}")]
+    Ed25519SignatureError(#[from] ed25519_dalek::SignatureError),
+
+    #[error("Ed25519 PKCS8 error: {0}")]
+    Ed25519Pkcs8Error(#[from] ed25519_dalek::pkcs8::Error),
 }
 
 #[derive(Error, Debug)]
 pub enum CryptoError {
-    #[error("Failed to generate signature: {reason}")]
-    SignatureFailed { reason: String },
-
-    #[error("Signature verification failed: {reason}")]
-    VerificationFailed { reason: String },
-
-    #[error("Failed to generate key: {reason}")]
-    KeyGenerationFailed { reason: String },
-
-    #[error("Failed to import key: {reason}")]
-    KeyImportFailed { reason: String },
-
     #[error("Invalid key format: {format}")]
     InvalidKeyFormat { format: String },
-
-    #[error("Algorithm not supported: {algorithm}")]
-    UnsupportedAlgorithm { algorithm: String },
-
-    #[error("Ed25519 error: {0}")]
-    Ed25519(String),
 }
 
 #[derive(Error, Debug)]
@@ -111,20 +99,6 @@ pub enum KeyManagementError {
 
     #[error("Failed to store key to {destination}: {reason}")]
     StoreFailed { destination: String, reason: String },
-}
-
-impl From<ed25519_dalek::SignatureError> for YkadaError {
-    fn from(err: ed25519_dalek::SignatureError) -> Self {
-        YkadaError::Crypto(CryptoError::Ed25519(err.to_string()))
-    }
-}
-
-impl From<ed25519_dalek::pkcs8::Error> for YkadaError {
-    fn from(err: ed25519_dalek::pkcs8::Error) -> Self {
-        YkadaError::Crypto(CryptoError::InvalidKeyFormat {
-            format: format!("PKCS8: {}", err),
-        })
-    }
 }
 
 #[cfg(test)]

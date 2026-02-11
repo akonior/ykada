@@ -28,7 +28,6 @@ pub mod yubikey_contract {
     use std::str::FromStr;
 
     use crate::{
-        error::CryptoError,
         model::{Algorithm, ManagementKey, Pin, Slot, TouchPolicy},
         ports::{KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer},
         CardanoKey, DerivationPath, Ed25519PrivateKey, SeedPhrase, YkadaError,
@@ -117,7 +116,7 @@ pub mod yubikey_contract {
         );
 
         match result.unwrap_err() {
-            YkadaError::Crypto(CryptoError::SignatureFailed { .. }) => { /* ok */ }
+            YkadaError::YubikeyLib(yubikey::Error::GenericError) => { /* ok */ }
             other => panic!("expected error: {other:?}"),
         }
     }

@@ -124,11 +124,10 @@ impl Signer for FakeYubiKey {
             self.verify_pin(pin)?;
         }
 
-        let (signing_key, _) = self.keys.get(&slot).ok_or_else(|| {
-            YkadaError::Crypto(crate::error::CryptoError::SignatureFailed {
-                reason: "Key not found".to_string(),
-            })
-        })?;
+        let (signing_key, _) = self
+            .keys
+            .get(&slot)
+            .ok_or(YkadaError::YubikeyLib(yubikey::Error::GenericError))?;
 
         use ed25519_dalek::Signer;
         let signature = signing_key.to_signing_key().sign(data);

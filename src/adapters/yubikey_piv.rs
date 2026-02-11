@@ -187,12 +187,7 @@ impl Signer for PivYubiKey {
             data,
             algorithm.to_yubikey_algorithm_id(),
             slot.to_yubikey_slot_id(),
-        )
-        .map_err(|e| {
-            YkadaError::Crypto(crate::error::CryptoError::SignatureFailed {
-                reason: format!("Signing failed: {}", e),
-            })
-        })?;
+        )?;
 
         debug!("Signature generated successfully");
         Ok(signature.to_vec())
