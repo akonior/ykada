@@ -15,7 +15,20 @@ To run the YubiKey Cardano wallet tool, use:
 cargo run --quiet --bin ykada
 ```
 
-You should see output similar to:
+## Installation
+
+You can install the YubiKey Cardano wallet CLI globally using [cargo](https://doc.rust-lang.org/cargo/):
+
+```sh
+cargo install --path . --locked
+```
+
+![Installation Demo](demo/gif/installatin.gif)
+
+
+This will build and install the `ykada` binary into your Cargo bin directory (typically `~/.cargo/bin`). Make sure this directory is in your `PATH` to run `ykada` from anywhere.
+
+When you run `ykada`, you should see output similar to the following:
 
 ```
 YubiKey Cardano wallet
@@ -23,10 +36,10 @@ YubiKey Cardano wallet
 Usage: ykada [OPTIONS] <COMMAND>
 
 Commands:
-  load-key  Load a private key (DER) into YubiKey
-  sign      Sign data provided via stdin
-  info
-  help      Print this message or the help of the given subcommand(s)
+  import-key  Import a private key into the YubiKey
+  sign        Sign data using the YubiKey
+  generate    Generate a new key in the YubiKey
+  help        Print this message or the help of the given subcommand(s)
 
 Options:
   -v, --verbose...  Increase logging verbosity
