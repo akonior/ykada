@@ -22,6 +22,7 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    #[command(about = "Import a private key into the YubiKey")]
     ImportKey {
         #[command(flatten)]
         key_options: KeyOptions,
@@ -33,13 +34,16 @@ pub enum Commands {
         path: Option<String>,
     },
 
+    #[command(about = "Sign data using the YubiKey")]
     Sign,
 
+    #[command(about = "Generate a new key in the YubiKey")]
     Generate {
         #[command(flatten)]
         key_options: KeyOptions,
     },
 
+    #[command(hide = true)]
     Info,
 }
 
