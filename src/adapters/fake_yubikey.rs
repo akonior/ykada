@@ -1,23 +1,13 @@
-#[cfg(test)]
 use crate::error::{YkadaError, YkadaResult};
-#[cfg(test)]
 use crate::model::{Algorithm, ManagementKey, Pin, Slot};
-#[cfg(test)]
 use crate::ports::{
     DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
-#[cfg(test)]
 use crate::{Ed25519PrivateKey, Ed25519PublicKey};
-#[cfg(test)]
 use ed25519_dalek::{SigningKey, VerifyingKey};
-#[cfg(test)]
 use rand::rng;
-#[cfg(test)]
 use rand::RngCore;
-#[cfg(test)]
 use std::collections::HashMap;
-#[cfg(test)]
-#[cfg(test)]
 #[derive(Debug, Clone)]
 pub struct FakeYubiKey {
     pub pin: Pin,
@@ -27,7 +17,6 @@ pub struct FakeYubiKey {
     pub pin_verified: bool,
 }
 
-#[cfg(test)]
 impl FakeYubiKey {
     pub fn new(pin: Pin) -> Self {
         Self {
@@ -42,7 +31,6 @@ impl FakeYubiKey {
     }
 }
 
-#[cfg(test)]
 impl PinVerifier for FakeYubiKey {
     fn verify_pin(&mut self, pin: &Pin) -> YkadaResult<()> {
         if pin.as_bytes() == self.pin.as_bytes() {
@@ -56,7 +44,6 @@ impl PinVerifier for FakeYubiKey {
     }
 }
 
-#[cfg(test)]
 impl ManagementKeyVerifier for FakeYubiKey {
     fn authenticate(&mut self, mgmt_key: Option<&ManagementKey>) -> YkadaResult<()> {
         let key_to_check = mgmt_key.unwrap_or(&self.mgmt_key);
@@ -69,14 +56,13 @@ impl ManagementKeyVerifier for FakeYubiKey {
     }
 }
 
-#[cfg(test)]
 impl KeyManager for FakeYubiKey {
     fn import_key(&mut self, key: Ed25519PrivateKey, config: KeyConfig) -> YkadaResult<()> {
         if !self.authenticated {
             return Err(YkadaError::YubikeyLib(yubikey::Error::AuthenticationError));
         }
 
-        let signing_key = SigningKey::from_bytes(&key.as_array());
+        let signing_key = SigningKey::from_bytes(key.as_array());
         let verifying_key = signing_key.verifying_key();
         self.keys.insert(config.slot, (key, verifying_key));
         Ok(())
@@ -103,7 +89,6 @@ impl KeyManager for FakeYubiKey {
     }
 }
 
-#[cfg(test)]
 impl Signer for FakeYubiKey {
     fn sign(
         &mut self,
@@ -127,12 +112,10 @@ impl Signer for FakeYubiKey {
     }
 }
 
-#[cfg(test)]
 pub struct FakeDeviceFinder {
     pub device: Option<FakeYubiKey>,
 }
 
-#[cfg(test)]
 impl DeviceFinder for FakeDeviceFinder {
     type Device = FakeYubiKey;
 
@@ -141,7 +124,6 @@ impl DeviceFinder for FakeDeviceFinder {
     }
 }
 
-#[cfg(test)]
 mod tests {
     use super::*;
     use crate::contract_tests_for;

@@ -70,7 +70,6 @@ impl CardanoKey {
 mod tests {
     use super::*;
     use crate::model::DerivationPath;
-    use hex;
 
     const CIP3_MNEMONIC: &str = "eight country switch draw meat scout mystery blade tip drift useless good keep usage title";
     const CIP3_ROOT_KEY_NO_PASSPHRASE: &str = "c065afd2832cd8b087c4d9ab7011f481ee1e0721e78ea5dd609f3ab3f156d245d176bd8fd4ec60b4731c3918a2a72a0226c0cd119ec35b47e4d55884667f552a23f7fdcd4a10c6cd2c7393ac61d877873e248f417634aa3d812af327ffe9d620";

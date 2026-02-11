@@ -145,8 +145,10 @@ pub mod yubikey_contract {
         let verifying_key = signing_key.verifying_key();
         let secret_key = Ed25519PrivateKey::from(*signing_key.as_bytes());
 
-        let mut config = KeyConfig::default();
-        config.touch_policy = TouchPolicy::Never;
+        let config = KeyConfig {
+            touch_policy: TouchPolicy::Never,
+            ..Default::default()
+        };
 
         let result = device.import_key(secret_key, config.clone());
 
@@ -190,8 +192,10 @@ pub mod yubikey_contract {
             .authenticate(Some(&TESTING_MANAGEMENT_KEY))
             .expect("Authentication failed");
 
-        let mut config = KeyConfig::default();
-        config.touch_policy = TouchPolicy::Never;
+        let config = KeyConfig {
+            touch_policy: TouchPolicy::Never,
+            ..Default::default()
+        };
         let result = device.generate_key(config.clone());
 
         assert!(result.is_ok(), "error: {:?}", result.err());
