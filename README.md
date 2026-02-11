@@ -23,7 +23,7 @@ You can install the YubiKey Cardano wallet CLI globally using [cargo](https://do
 cargo install --path . --locked
 ```
 
-![Installation Demo](demo/gif/installatin.gif)
+![Installation Demo](docs/gif/installation.gif)
 
 
 This will build and install the `ykada` binary into your Cargo bin directory (typically `~/.cargo/bin`). Make sure this directory is in your `PATH` to run `ykada` from anywhere.
