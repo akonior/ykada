@@ -155,8 +155,11 @@ fn main() -> anyhow::Result<()> {
                 let mut buf = Vec::new();
                 io::stdin().read_to_end(&mut buf)?;
                 let der_key = DerPrivateKey(buf);
-                ykada::import_private_key_in_der_format(der_key, config, mgmt_key_opt.as_ref())
-                    .context("failed to load DER private key into YubiKey")?;
+                let verifying_key =
+                    ykada::import_private_key_in_der_format(der_key, config, mgmt_key_opt.as_ref())
+                        .context("failed to load DER private key into YubiKey")?;
+
+                println!("Imported verifying key: {}", verifying_key.to_bech32()?);
             }
         }
 

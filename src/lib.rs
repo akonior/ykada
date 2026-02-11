@@ -1,3 +1,5 @@
+// #![warn(clippy::must_use_candidate)]
+
 use std::convert::TryInto;
 
 use tracing::{debug, info};
