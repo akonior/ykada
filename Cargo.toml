@@ -10,10 +10,9 @@ repository = "https://github.com/akonior/ykada"
 #
 # Usage:
 # - As a library only: `ykada = { version = "0.1", default-features = false }`
-# - With CLI (default): `ykada = "0.1"`
+# - With CLI (default): `ykada = "0.2"`
 # - Install CLI tool: `cargo install ykada`
 # - Run hardware tests: `cargo test --features hardware-tests`
-# - Run ignored tests: `cargo test --ignored` (alternative)
 
 [features]
 default = ["cli"]
