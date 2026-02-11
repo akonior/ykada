@@ -1,14 +1,13 @@
 use crate::adapters::PivDeviceFinder;
 use crate::error::YkadaResult;
+pub use crate::logic::{Bech32Encodable, Bech32Error};
+pub use crate::model::*;
 use crate::ports::KeyConfig;
 use crate::use_cases::{
-    generate_key as generate_key_use_case,
-    import_private_key_from_seed_phrase as import_private_key_from_seed_phrase_use_case,
-    import_private_key_in_der_format as import_private_key_in_der_format_use_case,
+    generate_key_use_case, import_private_key_from_seed_phrase_use_case,
+    import_private_key_in_der_format_use_case,
 };
 use ed25519_dalek::VerifyingKey;
-
-pub use crate::model::*;
 
 pub fn generate_key() -> YkadaResult<VerifyingKey> {
     generate_key_with_config(KeyConfig::default(), None)

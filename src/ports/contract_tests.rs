@@ -25,11 +25,12 @@ macro_rules! contract_tests_for {
 pub mod yubikey_contract {
     use ed25519_dalek::{SecretKey, SigningKey};
 
+    use std::str::FromStr;
+
     use crate::{
-        error::{CryptoError, DeviceError},
         model::{Algorithm, ManagementKey, Pin, Slot, TouchPolicy},
         ports::{KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer},
-        CardanoKey, DerivationPath, SeedPhrase, YkadaError,
+        CardanoKey, DerivationPath, Ed25519PrivateKey, SeedPhrase, YkadaError,
     };
 
     const TESTING_MANAGEMENT_KEY: ManagementKey = ManagementKey::new([
@@ -47,7 +48,7 @@ pub mod yubikey_contract {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            YkadaError::Device(DeviceError::PinVerificationFailed { .. })
+            YkadaError::YubikeyLib(yubikey::Error::WrongPin { tries: 2 })
         ));
     }
 
@@ -64,22 +65,32 @@ pub mod yubikey_contract {
 
         let result = device.authenticate(Some(&wrong_mgmt_key));
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            YkadaError::Device(DeviceError::AuthenticationFailed { .. })
-        ));
+        let error = result.unwrap_err();
+        assert!(
+            matches!(
+                error,
+                YkadaError::YubikeyLib(yubikey::Error::AuthenticationError)
+            ),
+            "error: {:?}",
+            error
+        );
     }
 
     pub(crate) fn test_import_key_fail_not_authenticated(mut device: impl KeyManager) {
-        let secret_key = SecretKey::from([0u8; 32]);
+        let secret_key = Ed25519PrivateKey::from([0u8; 32]);
         let config = KeyConfig::default();
 
         let result = device.import_key(secret_key, config.clone());
+        let error = result.unwrap_err();
 
-        assert!(matches!(
-            result.unwrap_err(),
-            YkadaError::Device(DeviceError::AuthenticationFailed { .. })
-        ));
+        assert!(
+            matches!(
+                error,
+                YkadaError::YubikeyLib(yubikey::Error::AuthenticationError)
+            ),
+            "error: {:?}",
+            error
+        );
     }
 
     pub(crate) fn test_import_key_success(mut device: impl KeyManager + ManagementKeyVerifier) {
@@ -87,7 +98,7 @@ pub mod yubikey_contract {
             .authenticate(Some(&TESTING_MANAGEMENT_KEY))
             .expect("Authentication failed");
 
-        let secret_key = SecretKey::from([0u8; 32]);
+        let secret_key = Ed25519PrivateKey::from([0u8; 32]);
         let config = KeyConfig::default();
 
         let result = device.import_key(secret_key, config.clone());
@@ -105,7 +116,7 @@ pub mod yubikey_contract {
         );
 
         match result.unwrap_err() {
-            YkadaError::Crypto(CryptoError::SignatureFailed { .. }) => { /* ok */ }
+            YkadaError::YubikeyLib(yubikey::Error::GenericError) => { /* ok */ }
             other => panic!("expected error: {other:?}"),
         }
     }
@@ -119,7 +130,7 @@ pub mod yubikey_contract {
         );
 
         match result.unwrap_err() {
-            YkadaError::Device(DeviceError::PinVerificationFailed { .. }) => { /* ok */ }
+            YkadaError::YubikeyLib(yubikey::Error::WrongPin { tries: 2 }) => { /* ok */ }
             other => panic!("expected error: {other:?}"),
         }
     }
@@ -132,7 +143,7 @@ pub mod yubikey_contract {
         let secret_bytes = [0u8; 32];
         let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
         let verifying_key = signing_key.verifying_key();
-        let secret_key = SecretKey::from(*signing_key.as_bytes());
+        let secret_key = Ed25519PrivateKey::from(*signing_key.as_bytes());
 
         let mut config = KeyConfig::default();
         config.touch_policy = TouchPolicy::Never;
@@ -168,7 +179,7 @@ pub mod yubikey_contract {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            YkadaError::Device(DeviceError::AuthenticationFailed { .. })
+            YkadaError::AuthenticationFailed { .. }
         ));
     }
 
@@ -184,7 +195,7 @@ pub mod yubikey_contract {
         let result = device.generate_key(config.clone());
 
         assert!(result.is_ok(), "error: {:?}", result.err());
-        let verifying_key = result.unwrap();
+        let verifying_key = result.unwrap().to_verifying_key();
         assert_eq!(verifying_key.as_bytes().len(), 32);
 
         let pin = Pin::default();
@@ -198,6 +209,7 @@ pub mod yubikey_contract {
             .map_err(|_| "Invalid signature length")
             .expect("Invalid signature length");
         let signature = ed25519_dalek::Signature::from_bytes(&sig_array);
+
         verifying_key
             .verify_strict(data, &signature)
             .expect("Signature verification failed");
@@ -219,8 +231,7 @@ pub mod yubikey_contract {
             DerivationPath::try_from("m/1852'/1815'/0'/0/0").expect("Invalid derivation path");
         let child_key = root_key.derive(&path);
 
-        child_key.public_key();
-        let piv_key = child_key.to_piv_key();
+        let private_key = child_key.private_key();
 
         let config = KeyConfig {
             slot: crate::model::Slot::KeyManagement,
@@ -228,7 +239,7 @@ pub mod yubikey_contract {
         };
 
         device
-            .import_key(piv_key, config)
+            .import_key(private_key, config)
             .expect("Failed to import key");
     }
 }

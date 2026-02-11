@@ -1,5 +1,5 @@
 #[cfg(test)]
-use crate::error::{DeviceError, KeyManagementError, YkadaError, YkadaResult};
+use crate::error::{YkadaError, YkadaResult};
 #[cfg(test)]
 use crate::model::{Algorithm, ManagementKey, Pin, Slot};
 #[cfg(test)]
@@ -7,7 +7,9 @@ use crate::ports::{
     DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
 #[cfg(test)]
-use ed25519_dalek::{SecretKey, SigningKey, VerifyingKey};
+use crate::{Ed25519PrivateKey, Ed25519PublicKey};
+#[cfg(test)]
+use ed25519_dalek::{SigningKey, VerifyingKey};
 #[cfg(test)]
 use rand::rng;
 #[cfg(test)]
@@ -20,7 +22,7 @@ use std::collections::HashMap;
 pub struct FakeYubiKey {
     pub pin: Pin,
     pub mgmt_key: ManagementKey,
-    pub keys: HashMap<Slot, (SigningKey, VerifyingKey)>,
+    pub keys: HashMap<Slot, (Ed25519PrivateKey, VerifyingKey)>,
     pub authenticated: bool,
     pub pin_verified: bool,
 }
@@ -47,8 +49,8 @@ impl PinVerifier for FakeYubiKey {
             self.pin_verified = true;
             Ok(())
         } else {
-            Err(YkadaError::Device(DeviceError::PinVerificationFailed {
-                reason: "Invalid PIN".to_string(),
+            Err(YkadaError::YubikeyLib(yubikey::Error::WrongPin {
+                tries: 2,
             }))
         }
     }
@@ -62,41 +64,29 @@ impl ManagementKeyVerifier for FakeYubiKey {
             self.authenticated = true;
             Ok(())
         } else {
-            Err(YkadaError::Device(DeviceError::AuthenticationFailed {
-                reason: "Invalid Management Key".to_string(),
-            }))
+            Err(YkadaError::YubikeyLib(yubikey::Error::AuthenticationError))
         }
     }
 }
 
 #[cfg(test)]
 impl KeyManager for FakeYubiKey {
-    fn import_key(&mut self, key: SecretKey, config: KeyConfig) -> YkadaResult<()> {
+    fn import_key(&mut self, key: Ed25519PrivateKey, config: KeyConfig) -> YkadaResult<()> {
         if !self.authenticated {
-            return Err(YkadaError::Device(DeviceError::AuthenticationFailed {
-                reason: "Not authenticated".to_string(),
-            }));
+            return Err(YkadaError::YubikeyLib(yubikey::Error::AuthenticationError));
         }
 
-        if self.keys.contains_key(&config.slot) {
-            return Err(YkadaError::KeyManagement(
-                KeyManagementError::SlotOccupied {
-                    slot: format!("{:?}", config.slot),
-                },
-            ));
-        }
-
-        let signing_key = SigningKey::from_bytes(&key);
+        let signing_key = SigningKey::from_bytes(&key.as_array());
         let verifying_key = signing_key.verifying_key();
-        self.keys.insert(config.slot, (signing_key, verifying_key));
+        self.keys.insert(config.slot, (key, verifying_key));
         Ok(())
     }
 
-    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<VerifyingKey> {
+    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<Ed25519PublicKey> {
         if !self.authenticated {
-            return Err(YkadaError::Device(DeviceError::AuthenticationFailed {
+            return Err(YkadaError::AuthenticationFailed {
                 reason: "Not authenticated".to_string(),
-            }));
+            });
         }
 
         use ed25519_dalek::SecretKey;
@@ -105,8 +95,11 @@ impl KeyManager for FakeYubiKey {
         let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
         let verifying_key = signing_key.verifying_key();
 
-        self.keys.insert(config.slot, (signing_key, verifying_key));
-        Ok(verifying_key)
+        self.keys.insert(
+            config.slot,
+            (Ed25519PrivateKey::from(secret_bytes), verifying_key),
+        );
+        Ok(verifying_key.into())
     }
 }
 
@@ -123,14 +116,13 @@ impl Signer for FakeYubiKey {
             self.verify_pin(pin)?;
         }
 
-        let (signing_key, _) = self.keys.get(&slot).ok_or_else(|| {
-            YkadaError::Crypto(crate::error::CryptoError::SignatureFailed {
-                reason: "Key not found".to_string(),
-            })
-        })?;
+        let (signing_key, _) = self
+            .keys
+            .get(&slot)
+            .ok_or(YkadaError::YubikeyLib(yubikey::Error::GenericError))?;
 
         use ed25519_dalek::Signer;
-        let signature = signing_key.sign(data);
+        let signature = signing_key.to_signing_key().sign(data);
         Ok(signature.to_bytes().to_vec())
     }
 }
@@ -145,9 +137,7 @@ impl DeviceFinder for FakeDeviceFinder {
     type Device = FakeYubiKey;
 
     fn find_first(&self) -> YkadaResult<Self::Device> {
-        self.device
-            .clone()
-            .ok_or_else(|| YkadaError::Device(DeviceError::NotFound))
+        self.device.clone().ok_or(YkadaError::NotFound)
     }
 }
 

@@ -42,6 +42,9 @@ hmac = "0.12"
 sha2 = "0.10"
 ed25519-bip32 = "0.4"
 
+# Encoding
+bech32 = "0.9"
+
 # CLI dependencies (optional, only with "cli" feature)
 clap = { version = "4.5.53", features = ["derive"], optional = true }
 clap-verbosity-flag = { version = "3.0.4", default-features = false, features = [

@@ -1,17 +1,14 @@
 use thiserror::Error;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum PinPolicy {
+    #[default]
     Never,
     Once,
     Always,
 }
 
 impl PinPolicy {
-    pub fn default() -> Self {
-        Self::Always
-    }
-
     pub fn recommended_cardano() -> Self {
         Self::Always
     }
@@ -36,18 +33,15 @@ impl PinPolicy {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum TouchPolicy {
+    #[default]
     Never,
     Always,
     Cached,
 }
 
 impl TouchPolicy {
-    pub fn default() -> Self {
-        Self::Never
-    }
-
     pub fn recommended_cardano() -> Self {
         Self::Always
     }

@@ -1,12 +1,11 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
 use clap_verbosity_flag::{Verbosity, WarnLevel};
-use hex;
 use std::io::{self, Read, Write};
 use tracing::error;
 
 use ykada::{
-    api::{PinPolicy, Slot, TouchPolicy},
+    api::{Bech32Encodable, PinPolicy, Slot, TouchPolicy},
     DerPrivateKey,
 };
 
@@ -23,6 +22,7 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    #[command(about = "Import a private key into the YubiKey")]
     ImportKey {
         #[command(flatten)]
         key_options: KeyOptions,
@@ -34,13 +34,16 @@ pub enum Commands {
         path: Option<String>,
     },
 
+    #[command(about = "Sign data using the YubiKey")]
     Sign,
 
+    #[command(about = "Generate a new key in the YubiKey")]
     Generate {
         #[command(flatten)]
         key_options: KeyOptions,
     },
 
+    #[command(hide = true)]
     Info,
 }
 
@@ -117,6 +120,9 @@ fn main() -> anyhow::Result<()> {
 
     tracing_subscriber::fmt()
         .with_max_level(cli.verbosity)
+        .without_time()
+        .with_target(true)
+        .with_level(true)
         .init();
 
     match cli.command {
@@ -144,8 +150,7 @@ fn main() -> anyhow::Result<()> {
                 )
                 .context("failed to import key from seed phrase")?;
 
-                let public_key_hex = hex::encode(verifying_key.as_bytes());
-                println!("{}", public_key_hex);
+                println!("Imported verifying key: {}", verifying_key.to_bech32()?);
             } else {
                 let mut buf = Vec::new();
                 io::stdin().read_to_end(&mut buf)?;
@@ -172,8 +177,7 @@ fn main() -> anyhow::Result<()> {
 
             match ykada::generate_key_with_config(config, mgmt_key_opt.as_ref()) {
                 Ok(verifying_key) => {
-                    let public_key_hex = hex::encode(verifying_key.as_bytes());
-                    println!("{}", public_key_hex);
+                    println!("Generated verifying key: {}", verifying_key.to_bech32()?);
                 }
                 Err(e) => {
                     error!("Failed to generate key: {}", e);
@@ -216,6 +220,10 @@ mod tests {
         println!("stdout: {}", stdout);
 
         let trimmed = stdout.trim();
-        assert_eq!(trimmed.len(), 64, "Public key should be 64 hex characters");
+        assert!(
+            trimmed.starts_with("Generated verifying key: addr_vk1"),
+            "Public key should start with 'addr_vk', got: {}",
+            trimmed
+        );
     }
 }

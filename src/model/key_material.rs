@@ -3,9 +3,9 @@ use std::fmt;
 use thiserror::Error;
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct PrivateKey([u8; 32]);
+pub struct Ed25519PrivateKey([u8; 32]);
 
-impl PrivateKey {
+impl Ed25519PrivateKey {
     pub fn from_slice(key: &[u8]) -> Result<Self, KeyMaterialError> {
         if key.len() != 32 {
             return Err(KeyMaterialError::InvalidLength {
@@ -25,30 +25,45 @@ impl PrivateKey {
     pub fn as_array(&self) -> &[u8; 32] {
         &self.0
     }
+
+    pub fn to_signing_key(&self) -> SigningKey {
+        SigningKey::from_bytes(self.as_array())
+    }
 }
 
-impl fmt::Debug for PrivateKey {
+impl fmt::Debug for Ed25519PrivateKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "PrivateKey([REDACTED])")
     }
 }
 
-impl From<SigningKey> for PrivateKey {
+impl From<SigningKey> for Ed25519PrivateKey {
     fn from(key: SigningKey) -> Self {
         Self(*key.as_bytes())
     }
 }
 
-impl From<&SigningKey> for PrivateKey {
+impl From<&SigningKey> for Ed25519PrivateKey {
     fn from(key: &SigningKey) -> Self {
         Self(*key.as_bytes())
     }
 }
+impl From<[u8; 32]> for Ed25519PrivateKey {
+    fn from(key: [u8; 32]) -> Self {
+        Self(key)
+    }
+}
+
+impl From<&[u8; 32]> for Ed25519PrivateKey {
+    fn from(key: &[u8; 32]) -> Self {
+        Self(*key)
+    }
+}
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct PublicKey([u8; 32]);
+pub struct Ed25519PublicKey([u8; 32]);
 
-impl PublicKey {
+impl Ed25519PublicKey {
     pub fn from_slice(key: &[u8]) -> Result<Self, KeyMaterialError> {
         if key.len() != 32 {
             return Err(KeyMaterialError::InvalidLength {
@@ -68,47 +83,51 @@ impl PublicKey {
     pub fn as_array(&self) -> &[u8; 32] {
         &self.0
     }
+
+    pub fn to_verifying_key(&self) -> VerifyingKey {
+        VerifyingKey::from_bytes(self.as_array()).expect("Invalid Ed25519 public key")
+    }
 }
 
-impl fmt::Debug for PublicKey {
+impl fmt::Debug for Ed25519PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "PublicKey({})", hex::encode(&self.0[..8]))
     }
 }
 
-impl From<VerifyingKey> for PublicKey {
+impl From<VerifyingKey> for Ed25519PublicKey {
     fn from(key: VerifyingKey) -> Self {
         Self(*key.as_bytes())
     }
 }
 
-impl From<&VerifyingKey> for PublicKey {
+impl From<&VerifyingKey> for Ed25519PublicKey {
     fn from(key: &VerifyingKey) -> Self {
         Self(*key.as_bytes())
     }
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct KeyPair {
-    private: PrivateKey,
-    public: PublicKey,
+pub struct Ed25519KeyPair {
+    private: Ed25519PrivateKey,
+    public: Ed25519PublicKey,
 }
 
-impl KeyPair {
-    pub fn new(private: PrivateKey, public: PublicKey) -> Self {
+impl Ed25519KeyPair {
+    pub fn new(private: Ed25519PrivateKey, public: Ed25519PublicKey) -> Self {
         Self { private, public }
     }
 
-    pub fn private(&self) -> &PrivateKey {
+    pub fn private(&self) -> &Ed25519PrivateKey {
         &self.private
     }
 
-    pub fn public(&self) -> &PublicKey {
+    pub fn public(&self) -> &Ed25519PublicKey {
         &self.public
     }
 }
 
-impl fmt::Debug for KeyPair {
+impl fmt::Debug for Ed25519KeyPair {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -118,12 +137,12 @@ impl fmt::Debug for KeyPair {
     }
 }
 
-impl From<SigningKey> for KeyPair {
+impl From<SigningKey> for Ed25519KeyPair {
     fn from(key: SigningKey) -> Self {
         let verifying_key = key.verifying_key();
         Self {
-            private: PrivateKey::from(&key),
-            public: PublicKey::from(&verifying_key),
+            private: Ed25519PrivateKey::from(&key),
+            public: Ed25519PublicKey::from(&verifying_key),
         }
     }
 }
@@ -150,14 +169,14 @@ mod tests {
     #[test]
     fn test_private_key_from_slice_valid() {
         let bytes = [0u8; 32];
-        assert!(PrivateKey::from_slice(&bytes).is_ok());
+        assert!(Ed25519PrivateKey::from_slice(&bytes).is_ok());
     }
 
     #[test]
     fn test_private_key_from_slice_invalid_length() {
         let bytes = [0u8; 16];
         assert_eq!(
-            PrivateKey::from_slice(&bytes).unwrap_err(),
+            Ed25519PrivateKey::from_slice(&bytes).unwrap_err(),
             KeyMaterialError::InvalidLength {
                 expected: 32,
                 actual: 16
@@ -170,21 +189,21 @@ mod tests {
         let mut secret_bytes = [0u8; 32];
         rng().fill_bytes(&mut secret_bytes);
         let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
-        let private_key = PrivateKey::from(&signing_key);
+        let private_key = Ed25519PrivateKey::from(&signing_key);
         assert_eq!(private_key.as_bytes(), signing_key.as_bytes());
     }
 
     #[test]
     fn test_public_key_from_slice_valid() {
         let bytes = [0u8; 32];
-        assert!(PublicKey::from_slice(&bytes).is_ok());
+        assert!(Ed25519PublicKey::from_slice(&bytes).is_ok());
     }
 
     #[test]
     fn test_public_key_from_slice_invalid_length() {
         let bytes = [0u8; 16];
         assert_eq!(
-            PublicKey::from_slice(&bytes).unwrap_err(),
+            Ed25519PublicKey::from_slice(&bytes).unwrap_err(),
             KeyMaterialError::InvalidLength {
                 expected: 32,
                 actual: 16
@@ -198,7 +217,7 @@ mod tests {
         rng().fill_bytes(&mut secret_bytes);
         let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
         let verifying_key = signing_key.verifying_key();
-        let public_key = PublicKey::from(&verifying_key);
+        let public_key = Ed25519PublicKey::from(&verifying_key);
         assert_eq!(public_key.as_bytes(), verifying_key.as_bytes());
     }
 
@@ -209,7 +228,7 @@ mod tests {
         let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
         let verifying_key = signing_key.verifying_key();
         let signing_key_bytes = *signing_key.as_bytes();
-        let key_pair = KeyPair::from(signing_key);
+        let key_pair = Ed25519KeyPair::from(signing_key);
 
         assert_eq!(key_pair.private().as_bytes(), &signing_key_bytes);
         assert_eq!(key_pair.public().as_bytes(), verifying_key.as_bytes());
@@ -217,9 +236,9 @@ mod tests {
 
     #[test]
     fn test_key_pair_new() {
-        let private = PrivateKey::from_slice(&[1u8; 32]).unwrap();
-        let public = PublicKey::from_slice(&[2u8; 32]).unwrap();
-        let key_pair = KeyPair::new(private.clone(), public.clone());
+        let private = Ed25519PrivateKey::from_slice(&[1u8; 32]).unwrap();
+        let public = Ed25519PublicKey::from_slice(&[2u8; 32]).unwrap();
+        let key_pair = Ed25519KeyPair::new(private.clone(), public.clone());
 
         assert_eq!(key_pair.private(), &private);
         assert_eq!(key_pair.public(), &public);
@@ -227,14 +246,14 @@ mod tests {
 
     #[test]
     fn test_private_key_debug_redacted() {
-        let key = PrivateKey::from_slice(&[1u8; 32]).unwrap();
+        let key = Ed25519PrivateKey::from_slice(&[1u8; 32]).unwrap();
         let debug_str = format!("{:?}", key);
         assert!(debug_str.contains("REDACTED"));
     }
 
     #[test]
     fn test_public_key_debug_shows_partial() {
-        let key = PublicKey::from_slice(&[1u8; 32]).unwrap();
+        let key = Ed25519PublicKey::from_slice(&[1u8; 32]).unwrap();
         let debug_str = format!("{:?}", key);
         assert!(debug_str.contains("PublicKey"));
     }

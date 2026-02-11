@@ -4,7 +4,10 @@ use pbkdf2::pbkdf2_hmac;
 use sha2::Sha512;
 use thiserror::Error;
 
-use crate::model::{DerivationPath, PublicKey, SeedPhrase};
+use crate::{
+    model::{DerivationPath, Ed25519PublicKey, SeedPhrase},
+    Ed25519PrivateKey,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CardanoKey(XPrv);
@@ -35,17 +38,25 @@ impl CardanoKey {
         CardanoKey(derived_key)
     }
 
-    pub fn public_key(&self) -> PublicKey {
+    pub fn public_key(&self) -> Ed25519PublicKey {
         let xpub = self.0.public();
         let pub_bytes = xpub.public_key_bytes();
-        PublicKey::from_slice(pub_bytes).expect("XPub public_key_bytes() always returns 32 bytes")
+        Ed25519PublicKey::from_slice(pub_bytes)
+            .expect("XPub public_key_bytes() always returns 32 bytes")
     }
 
-    pub fn to_piv_key(&self) -> SecretKey {
+    pub fn to_secret_key(&self) -> SecretKey {
         let extended_secret = self.0.extended_secret_key_bytes();
         let mut k_l = [0u8; 32];
         k_l.copy_from_slice(&extended_secret[..32]);
         k_l
+    }
+
+    pub fn private_key(&self) -> Ed25519PrivateKey {
+        let extended_secret = self.0.extended_secret_key_bytes();
+        let mut k_l = [0u8; 32];
+        k_l.copy_from_slice(&extended_secret[..32]);
+        Ed25519PrivateKey::from(k_l)
     }
 
     pub fn verifying_key(&self) -> ed25519_dalek::VerifyingKey {
@@ -196,7 +207,7 @@ mod tests {
         let xpub_key = cardano_key.public_key();
         let xpub_bytes = xpub_key.as_bytes();
 
-        let piv_key = cardano_key.to_piv_key();
+        let piv_key = cardano_key.to_secret_key();
         let extended_secret = cardano_key.0.extended_secret_key_bytes();
         let chain_code = cardano_key.0.chain_code();
 

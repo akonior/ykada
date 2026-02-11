@@ -1,9 +1,10 @@
-use crate::error::{CryptoError, DeviceError, KeyManagementError, YkadaError, YkadaResult};
-use crate::model::{Algorithm, ManagementKey, ManagementKeyError, Pin, Slot};
+use crate::error::{YkadaError, YkadaResult};
+use crate::model::{Algorithm, ManagementKey, Pin, Slot};
 use crate::ports::{
     DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
-use ed25519_dalek::{SecretKey, VerifyingKey};
+use crate::{Ed25519PrivateKey, Ed25519PublicKey};
+use ed25519_dalek::VerifyingKey;
 use std::convert::TryInto;
 use tracing::{debug, info};
 use yubikey::piv::{generate, import_cv_key, sign_data};
@@ -16,24 +17,16 @@ impl DeviceFinder for PivDeviceFinder {
     type Device = PivYubiKey;
 
     fn find_first(&self) -> YkadaResult<Self::Device> {
-        let mut readers = Context::open().map_err(|e| {
-            YkadaError::Device(DeviceError::ConnectionFailed {
-                reason: format!("Failed to open PC/SC context: {}", e),
-            })
-        })?;
+        let mut readers = Context::open()?;
 
-        for reader in readers.iter().map_err(|e| {
-            YkadaError::Device(DeviceError::ConnectionFailed {
-                reason: format!("Failed to iterate readers: {}", e),
-            })
-        })? {
+        for reader in readers.iter()? {
             if let Ok(yk) = reader.open() {
                 debug!("Connected to YubiKey: {:?}", reader.name());
                 return Ok(PivYubiKey::new(yk));
             }
         }
 
-        Err(YkadaError::Device(DeviceError::NotFound))
+        Err(YkadaError::NotFound)
     }
 }
 
@@ -62,22 +55,12 @@ impl PivYubiKey {
 impl ManagementKeyVerifier for PivYubiKey {
     fn authenticate(&mut self, mgmt_key: Option<&ManagementKey>) -> YkadaResult<()> {
         let mgm_key = if let Some(key) = mgmt_key {
-            MgmKey::try_from(key).map_err(|e: ManagementKeyError| {
-                YkadaError::Domain(crate::error::DomainError::ManagementKey(e))
-            })?
+            MgmKey::try_from(key)?
         } else {
-            MgmKey::get_default(&self.device).map_err(|e| {
-                YkadaError::Device(DeviceError::AuthenticationFailed {
-                    reason: format!("Failed to get default management key: {}", e),
-                })
-            })?
+            MgmKey::get_default(&self.device)?
         };
 
-        self.device.authenticate(&mgm_key).map_err(|e| {
-            YkadaError::Device(DeviceError::AuthenticationFailed {
-                reason: format!("Management key authentication failed: {}", e),
-            })
-        })?;
+        self.device.authenticate(&mgm_key)?;
 
         self.authenticated = true;
         debug!("YubiKey authenticated with management key");
@@ -87,10 +70,7 @@ impl ManagementKeyVerifier for PivYubiKey {
 
 impl PinVerifier for PivYubiKey {
     fn verify_pin(&mut self, pin: &Pin) -> YkadaResult<()> {
-        self.device.verify_pin(pin.as_bytes()).map_err(|e| {
-            let reason = format!("PIN verification failed: {}", e);
-            YkadaError::Device(DeviceError::PinVerificationFailed { reason })
-        })?;
+        self.device.verify_pin(pin.as_bytes())?;
 
         debug!("PIN verified successfully");
         Ok(())
@@ -98,7 +78,7 @@ impl PinVerifier for PivYubiKey {
 }
 
 impl KeyManager for PivYubiKey {
-    fn import_key(&mut self, key: SecretKey, config: KeyConfig) -> YkadaResult<()> {
+    fn import_key(&mut self, key: Ed25519PrivateKey, config: KeyConfig) -> YkadaResult<()> {
         self.ensure_authenticated()?;
 
         let algorithm = Algorithm::default_cardano();
@@ -114,26 +94,20 @@ impl KeyManager for PivYubiKey {
             &mut self.device,
             config.slot.to_yubikey_slot_id(),
             algorithm.to_yubikey_algorithm_id(),
-            &key,
+            key.as_array(),
             config.touch_policy.to_yubikey_touch_policy(),
             config.pin_policy.to_yubikey_pin_policy(),
-        )
-        .map_err(|e| {
-            YkadaError::KeyManagement(KeyManagementError::StoreFailed {
-                destination: format!("slot {:?}", config.slot),
-                reason: format!("Failed to import key: {}", e),
-            })
-        })?;
+        )?;
 
         info!("Key imported successfully to slot {:?}", config.slot);
         Ok(())
     }
 
-    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<VerifyingKey> {
+    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<Ed25519PublicKey> {
         if !self.authenticated {
-            return Err(YkadaError::Device(DeviceError::AuthenticationFailed {
+            return Err(YkadaError::AuthenticationFailed {
                 reason: "Not authenticated".to_string(),
-            }));
+            });
         }
 
         let slot_id = config.slot.to_yubikey_slot_id();
@@ -152,38 +126,31 @@ impl KeyManager for PivYubiKey {
             algorithm_id,
             pin_policy,
             touch_policy,
-        )
-        .map_err(|e| {
-            YkadaError::KeyManagement(KeyManagementError::StoreFailed {
-                destination: "YubiKey".to_string(),
-                reason: format!("Key generation failed: {}", e),
-            })
-        })?;
+        )?;
 
         info!("Key generated successfully in slot {:?}", slot_id);
 
         let public_key_bytes = spki.subject_public_key.raw_bytes();
 
         if public_key_bytes.len() != 32 {
-            return Err(YkadaError::Crypto(CryptoError::InvalidKeyFormat {
+            return Err(YkadaError::InvalidKeyFormat {
                 format: format!(
                     "Expected 32 bytes for Ed25519 public key, got {}",
                     public_key_bytes.len()
                 ),
-            }));
+            });
         }
 
-        let public_key_array: [u8; 32] = public_key_bytes[..32].try_into().map_err(|_| {
-            YkadaError::Crypto(CryptoError::InvalidKeyFormat {
-                format: "Failed to convert public key bytes to array".to_string(),
-            })
-        })?;
+        let public_key_array: [u8; 32] =
+            public_key_bytes[..32]
+                .try_into()
+                .map_err(|_| YkadaError::InvalidKeyFormat {
+                    format: "Failed to convert public key bytes to array".to_string(),
+                })?;
 
-        VerifyingKey::from_bytes(&public_key_array).map_err(|e| {
-            YkadaError::Crypto(CryptoError::InvalidKeyFormat {
-                format: format!("Invalid Ed25519 public key: {}", e),
-            })
-        })
+        let verifying_key = VerifyingKey::from_bytes(&public_key_array)?;
+
+        Ok(verifying_key.into())
     }
 }
 
@@ -211,12 +178,7 @@ impl Signer for PivYubiKey {
             data,
             algorithm.to_yubikey_algorithm_id(),
             slot.to_yubikey_slot_id(),
-        )
-        .map_err(|e| {
-            YkadaError::Crypto(crate::error::CryptoError::SignatureFailed {
-                reason: format!("Signing failed: {}", e),
-            })
-        })?;
+        )?;
 
         debug!("Signature generated successfully");
         Ok(signature.to_vec())

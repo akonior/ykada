@@ -1,44 +1,31 @@
-use crate::model::{CardanoKey, DerivationPath, SeedPhrase};
+use crate::logic::derive_private_key;
 use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
 use crate::{ManagementKey, YkadaResult};
+use ed25519_dalek::VerifyingKey;
 use tracing::debug;
 
-pub fn import_private_key_from_seed_phrase<F>(
+pub fn import_private_key_from_seed_phrase_use_case<F>(
     finder: &F,
     seed_phrase: &str,
     passphrase: &str,
     path: Option<&str>,
     config: KeyConfig,
     mgmt_key: Option<&ManagementKey>,
-) -> YkadaResult<ed25519_dalek::VerifyingKey>
+) -> YkadaResult<VerifyingKey>
 where
     F: DeviceFinder,
     F::Device: KeyManager + ManagementKeyVerifier,
 {
-    let seed = SeedPhrase::try_from(seed_phrase)?;
-
-    let derivation_path = if let Some(path_str) = path {
-        DerivationPath::try_from(path_str)?
-    } else {
-        DerivationPath::default()
-    };
-
-    debug!("Deriving key from seed phrase");
-    debug!("Derivation path: {:?}", derivation_path);
-
-    let root_key = CardanoKey::from_seed_phrase(&seed, passphrase)?;
-
-    let child_key = root_key.derive(&derivation_path);
-
-    let piv_key = child_key.to_piv_key();
+    let private_key = derive_private_key(seed_phrase, passphrase, path)?;
+    let verifying_key = private_key.to_signing_key().verifying_key();
 
     let mut device = finder.find_first()?;
     device.authenticate(mgmt_key)?;
 
-    device.import_key(piv_key, config)?;
+    device.import_key(private_key, config)?;
 
     debug!("Key imported successfully");
-    Ok(child_key.verifying_key())
+    Ok(verifying_key)
 }
 
 #[cfg(test)]
@@ -63,7 +50,7 @@ mod tests {
             1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 9,
         ]);
 
-        let result = import_private_key_from_seed_phrase(
+        let result = import_private_key_from_seed_phrase_use_case(
             &finder,
             seed_phrase,
             passphrase,
@@ -93,7 +80,7 @@ mod tests {
             1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 9,
         ]);
 
-        let result = import_private_key_from_seed_phrase(
+        let result = import_private_key_from_seed_phrase_use_case(
             &finder,
             seed_phrase,
             passphrase,
@@ -120,7 +107,7 @@ mod tests {
             1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 9,
         ]);
 
-        let result = import_private_key_from_seed_phrase(
+        let result = import_private_key_from_seed_phrase_use_case(
             &finder,
             seed_phrase,
             passphrase,

@@ -3,7 +3,7 @@ use crate::model::ManagementKey;
 use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
 use ed25519_dalek::VerifyingKey;
 
-pub fn generate_key<F>(
+pub fn generate_key_use_case<F>(
     finder: &F,
     config: KeyConfig,
     mgmt_key: Option<&ManagementKey>,
@@ -16,14 +16,14 @@ where
 
     device.authenticate(mgmt_key)?;
 
-    device.generate_key(config)
+    let public_key = device.generate_key(config)?;
+    Ok(public_key.to_verifying_key())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::adapters::fake_yubikey::{FakeDeviceFinder, FakeYubiKey};
-    use crate::error::DeviceError;
     use crate::model::{ManagementKey, Pin};
     use crate::YkadaError;
 
@@ -39,7 +39,7 @@ mod tests {
         let mgmt_key = ManagementKey::new([
             1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 9,
         ]);
-        let result = generate_key(&finder, config, Some(&mgmt_key));
+        let result = generate_key_use_case(&finder, config, Some(&mgmt_key));
 
         assert!(result.is_ok(), "error: {:?}", result.err());
         let verifying_key = result.unwrap();
@@ -50,13 +50,10 @@ mod tests {
     fn test_generate_key_device_not_found() {
         let finder = FakeDeviceFinder { device: None };
         let config = KeyConfig::default();
-        let result = generate_key(&finder, config, None);
+        let result = generate_key_use_case(&finder, config, None);
 
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            YkadaError::Device(DeviceError::NotFound)
-        ));
+        assert!(matches!(result.unwrap_err(), YkadaError::NotFound));
     }
 
     #[test]
@@ -69,12 +66,12 @@ mod tests {
 
         let config = KeyConfig::default();
         let wrong_mgmt_key = ManagementKey::new([1u8; 24]);
-        let result = generate_key(&finder, config, Some(&wrong_mgmt_key));
+        let result = generate_key_use_case(&finder, config, Some(&wrong_mgmt_key));
 
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            YkadaError::Device(DeviceError::AuthenticationFailed { .. })
+            YkadaError::YubikeyLib(yubikey::Error::AuthenticationError)
         ));
     }
 }
