@@ -6,7 +6,8 @@ use tracing::error;
 
 use ykada::{
     api::{
-        Bech32Encodable, Network, PinPolicy, Slot, StakeVerifyingKey, TouchPolicy, WalletConfig,
+        Bech32Encodable, Network, PinPolicy, SeedPhrase, Slot, StakeVerifyingKey, TouchPolicy,
+        WalletConfig,
     },
     DerPrivateKey,
 };
@@ -24,8 +25,30 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    #[command(about = "Import a private key into the YubiKey")]
-    ImportKey {
+    #[command(about = "Import a wallet from a BIP39 seed phrase into the YubiKey")]
+    Import {
+        #[arg(long)]
+        seed: String,
+        #[arg(long, default_value = "signature")]
+        payment_slot: SlotArg,
+        #[arg(long, default_value = "key-management")]
+        stake_slot: SlotArg,
+        #[arg(long, default_value = "always")]
+        pin_policy: PinPolicyArg,
+        #[arg(long, default_value = "always")]
+        touch_policy: TouchPolicyArg,
+        #[arg(long)]
+        mgmt_key: Option<String>,
+        #[arg(long, default_value = "testnet")]
+        network: NetworkArg,
+    },
+
+    #[command(
+        name = "import-key-legacy",
+        hide = true,
+        about = "Import a private key into the YubiKey (legacy)"
+    )]
+    ImportKeyLegacy {
         #[command(flatten)]
         key_options: KeyOptions,
         #[arg(long)]
@@ -39,8 +62,10 @@ pub enum Commands {
     #[command(about = "Sign data using the YubiKey")]
     Sign,
 
-    #[command(about = "Generate a new wallet: random seed, two keys on YubiKey, Cardano address")]
+    #[command(about = "Generate a new wallet: seed, two keys on YubiKey, Cardano address")]
     Generate {
+        #[arg(long)]
+        seed: Option<String>,
         #[arg(long, default_value = "signature")]
         payment_slot: SlotArg,
         #[arg(long, default_value = "key-management")]
@@ -163,7 +188,39 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     match cli.command {
-        Commands::ImportKey {
+        Commands::Import {
+            seed,
+            payment_slot,
+            stake_slot,
+            pin_policy,
+            touch_policy,
+            mgmt_key,
+            network,
+        } => {
+            let config = WalletConfig {
+                payment_slot: payment_slot.into(),
+                stake_slot: stake_slot.into(),
+                pin_policy: pin_policy.into(),
+                touch_policy: touch_policy.into(),
+                network: network.into(),
+            };
+            let mgmt_key_opt = mgmt_key.map(|s| s.try_into()).transpose()?;
+            let seed_phrase = SeedPhrase::try_from(seed.as_str()).context("invalid seed phrase")?;
+            let wallet = ykada::import_wallet(seed_phrase, config, mgmt_key_opt.as_ref())
+                .context("failed to import wallet from seed phrase")?;
+            println!("Mnemonic (store safely): {}", wallet.mnemonic.phrase());
+            println!(
+                "Payment verifying key:   {}",
+                wallet.payment_vk.to_bech32()?
+            );
+            println!(
+                "Stake verifying key:     {}",
+                StakeVerifyingKey(wallet.stake_vk).to_bech32()?
+            );
+            println!("Cardano address:         {}", wallet.address.to_bech32()?);
+        }
+
+        Commands::ImportKeyLegacy {
             key_options,
             seed,
             passphrase,
@@ -207,6 +264,7 @@ fn main() -> anyhow::Result<()> {
             std::io::stdout().write_all(&signature)?;
         }
         Commands::Generate {
+            seed,
             payment_slot,
             stake_slot,
             pin_policy,
@@ -222,7 +280,14 @@ fn main() -> anyhow::Result<()> {
                 network: network.into(),
             };
             let mgmt_key_opt = mgmt_key.map(|s| s.try_into()).transpose()?;
-            let wallet = ykada::generate_wallet(config, mgmt_key_opt.as_ref())?;
+            let wallet = match seed {
+                Some(phrase) => {
+                    let seed_phrase =
+                        SeedPhrase::try_from(phrase.as_str()).context("invalid seed phrase")?;
+                    ykada::import_wallet(seed_phrase, config, mgmt_key_opt.as_ref())?
+                }
+                None => ykada::generate_wallet(config, mgmt_key_opt.as_ref())?,
+            };
             println!("Mnemonic (store safely): {}", wallet.mnemonic.phrase());
             println!(
                 "Payment verifying key:   {}",

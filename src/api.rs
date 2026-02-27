@@ -30,13 +30,20 @@ pub fn import_private_key_in_der_format(
     import_private_key_in_der_format_use_case(&finder, der, config, mgmt_key)
 }
 
+pub fn import_wallet(
+    seed: SeedPhrase,
+    config: WalletConfig,
+    mgmt_key: Option<&ManagementKey>,
+) -> YkadaResult<GeneratedWallet> {
+    let finder = PivDeviceFinder;
+    generate_wallet_use_case(&finder, seed, config, mgmt_key)
+}
+
 pub fn generate_wallet(
     config: WalletConfig,
     mgmt_key: Option<&ManagementKey>,
 ) -> YkadaResult<GeneratedWallet> {
-    let seed = SeedPhrase::generate()?;
-    let finder = PivDeviceFinder;
-    generate_wallet_use_case(&finder, seed, config, mgmt_key)
+    import_wallet(SeedPhrase::generate()?, config, mgmt_key)
 }
 
 pub fn import_private_key_from_seed_phrase(
