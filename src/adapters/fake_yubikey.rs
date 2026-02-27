@@ -1,13 +1,14 @@
 use crate::error::{YkadaError, YkadaResult};
 use crate::model::{Algorithm, ManagementKey, Pin, Slot};
 use crate::ports::{
-    DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
+    DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
 use crate::{Ed25519PrivateKey, Ed25519PublicKey};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::rng;
 use rand::RngCore;
 use std::collections::HashMap;
+
 #[derive(Debug, Clone)]
 pub struct FakeYubiKey {
     pub pin: Pin,
@@ -15,6 +16,8 @@ pub struct FakeYubiKey {
     pub keys: HashMap<Slot, (Ed25519PrivateKey, VerifyingKey)>,
     pub authenticated: bool,
     pub pin_verified: bool,
+    pub serial: u32,
+    pub firmware: (u8, u8, u8),
 }
 
 impl FakeYubiKey {
@@ -27,6 +30,8 @@ impl FakeYubiKey {
             keys: HashMap::new(),
             authenticated: false,
             pin_verified: false,
+            serial: 0,
+            firmware: (5, 4, 3),
         }
     }
 }
@@ -57,14 +62,16 @@ impl ManagementKeyVerifier for FakeYubiKey {
 }
 
 impl KeyManager for FakeYubiKey {
-    fn import_key(&mut self, key: Ed25519PrivateKey, config: KeyConfig) -> YkadaResult<()> {
+    fn import_key(
+        &mut self,
+        key: Ed25519PrivateKey,
+        vk: Ed25519PublicKey,
+        config: KeyConfig,
+    ) -> YkadaResult<()> {
         if !self.authenticated {
             return Err(YkadaError::YubikeyLib(yubikey::Error::AuthenticationError));
         }
-
-        let signing_key = SigningKey::from_bytes(key.as_array());
-        let verifying_key = signing_key.verifying_key();
-        self.keys.insert(config.slot, (key, verifying_key));
+        self.keys.insert(config.slot, (key, vk.to_verifying_key()));
         Ok(())
     }
 
@@ -109,6 +116,20 @@ impl Signer for FakeYubiKey {
         use ed25519_dalek::Signer;
         let signature = signing_key.to_signing_key().sign(data);
         Ok(signature.to_bytes().to_vec())
+    }
+}
+
+impl DeviceReader for FakeYubiKey {
+    fn serial(&self) -> u32 {
+        self.serial
+    }
+
+    fn firmware_version(&self) -> (u8, u8, u8) {
+        self.firmware
+    }
+
+    fn read_public_key(&mut self, slot: Slot) -> YkadaResult<Option<Ed25519PublicKey>> {
+        Ok(self.keys.get(&slot).map(|(_, vk)| (*vk).into()))
     }
 }
 

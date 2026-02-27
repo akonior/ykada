@@ -1,6 +1,8 @@
 use crate::error::YkadaResult;
 use crate::logic::{derive_cardano_address, derive_key_pair};
-use crate::model::{DerivationPath, GeneratedWallet, ManagementKey, SeedPhrase, WalletConfig};
+use crate::model::{
+    DerivationPath, Ed25519PublicKey, GeneratedWallet, ManagementKey, SeedPhrase, WalletConfig,
+};
 use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
 
 pub fn generate_wallet_use_case<F>(
@@ -35,8 +37,12 @@ where
         touch_policy: config.touch_policy,
     };
 
-    device.import_key(payment_sk, payment_config)?;
-    device.import_key(stake_sk, stake_config)?;
+    device.import_key(
+        payment_sk,
+        Ed25519PublicKey::from(payment_vk),
+        payment_config,
+    )?;
+    device.import_key(stake_sk, Ed25519PublicKey::from(stake_vk), stake_config)?;
 
     Ok(GeneratedWallet {
         mnemonic: seed,

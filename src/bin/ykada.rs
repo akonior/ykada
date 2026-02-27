@@ -90,8 +90,15 @@ pub enum Commands {
         key_options: KeyOptions,
     },
 
-    #[command(hide = true)]
-    Info,
+    #[command(about = "Show connected YubiKey info and wallet address")]
+    Info {
+        #[arg(long, default_value = "signature")]
+        payment_slot: SlotArg,
+        #[arg(long, default_value = "key-management")]
+        stake_slot: SlotArg,
+        #[arg(long, default_value = "testnet")]
+        network: NetworkArg,
+    },
 }
 
 #[derive(clap::Args, Debug)]
@@ -320,8 +327,34 @@ fn main() -> anyhow::Result<()> {
             }
         }
 
-        Commands::Info => {
-            error!("Not implemented");
+        Commands::Info {
+            payment_slot,
+            stake_slot,
+            network,
+        } => {
+            let info =
+                ykada::api::wallet_info(payment_slot.into(), stake_slot.into(), network.into())
+                    .context("failed to read device info")?;
+
+            let (major, minor, patch) = info.firmware;
+            println!("YubiKey serial:          {}", info.serial);
+            println!("Firmware version:        {}.{}.{}", major, minor, patch);
+
+            match info.payment_vk {
+                Some(vk) => println!("Payment verifying key:   {}", vk.to_bech32()?),
+                None => println!("Payment verifying key:   (none)"),
+            }
+            match info.stake_vk {
+                Some(vk) => println!(
+                    "Stake verifying key:     {}",
+                    StakeVerifyingKey(vk).to_bech32()?
+                ),
+                None => println!("Stake verifying key:     (none)"),
+            }
+            match info.address {
+                Some(addr) => println!("Cardano address:         {}", addr.to_bech32()?),
+                None => {}
+            }
         }
     }
 

@@ -30,7 +30,7 @@ pub mod yubikey_contract {
     use crate::{
         model::{Algorithm, ManagementKey, Pin, Slot, TouchPolicy},
         ports::{KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer},
-        CardanoKey, DerivationPath, Ed25519PrivateKey, SeedPhrase, YkadaError,
+        CardanoKey, DerivationPath, Ed25519PrivateKey, Ed25519PublicKey, SeedPhrase, YkadaError,
     };
 
     const TESTING_MANAGEMENT_KEY: ManagementKey = ManagementKey::new([
@@ -78,9 +78,12 @@ pub mod yubikey_contract {
 
     pub(crate) fn test_import_key_fail_not_authenticated(mut device: impl KeyManager) {
         let secret_key = Ed25519PrivateKey::from([0u8; 32]);
+        let vk = Ed25519PublicKey::from(
+            ed25519_dalek::SigningKey::from_bytes(&[0u8; 32]).verifying_key(),
+        );
         let config = KeyConfig::default();
 
-        let result = device.import_key(secret_key, config.clone());
+        let result = device.import_key(secret_key, vk, config.clone());
         let error = result.unwrap_err();
 
         assert!(
@@ -99,9 +102,12 @@ pub mod yubikey_contract {
             .expect("Authentication failed");
 
         let secret_key = Ed25519PrivateKey::from([0u8; 32]);
+        let vk = Ed25519PublicKey::from(
+            ed25519_dalek::SigningKey::from_bytes(&[0u8; 32]).verifying_key(),
+        );
         let config = KeyConfig::default();
 
-        let result = device.import_key(secret_key, config.clone());
+        let result = device.import_key(secret_key, vk, config.clone());
 
         assert!(result.is_ok(), "error: {:?}", result.err());
     }
@@ -144,13 +150,14 @@ pub mod yubikey_contract {
         let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
         let verifying_key = signing_key.verifying_key();
         let secret_key = Ed25519PrivateKey::from(*signing_key.as_bytes());
+        let vk = Ed25519PublicKey::from(verifying_key);
 
         let config = KeyConfig {
             touch_policy: TouchPolicy::Never,
             ..Default::default()
         };
 
-        let result = device.import_key(secret_key, config.clone());
+        let result = device.import_key(secret_key, vk, config.clone());
 
         assert!(result.is_ok(), "error: {:?}", result.err());
 
@@ -236,6 +243,7 @@ pub mod yubikey_contract {
         let child_key = root_key.derive(&path);
 
         let private_key = child_key.private_key();
+        let cardano_vk = Ed25519PublicKey::from(child_key.verifying_key());
 
         let config = KeyConfig {
             slot: crate::model::Slot::KeyManagement,
@@ -243,7 +251,7 @@ pub mod yubikey_contract {
         };
 
         device
-            .import_key(private_key, config)
+            .import_key(private_key, cardano_vk, config)
             .expect("Failed to import key");
     }
 }

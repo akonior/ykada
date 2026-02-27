@@ -11,6 +11,7 @@ mod policy;
 mod seed_phrase;
 mod slot;
 mod wallet_config;
+mod wallet_info;
 
 pub use algorithm::{Algorithm, AlgorithmError};
 pub use cardano_address::CardanoAddress;
@@ -27,3 +28,4 @@ pub use policy::{PinPolicy, PolicyError, TouchPolicy};
 pub use seed_phrase::{SeedPhrase, SeedPhraseError};
 pub use slot::{Slot, SlotError};
 pub use wallet_config::WalletConfig;
+pub use wallet_info::WalletInfo;

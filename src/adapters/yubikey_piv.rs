@@ -1,14 +1,25 @@
 use crate::error::{YkadaError, YkadaResult};
 use crate::model::{Algorithm, ManagementKey, Pin, Slot};
 use crate::ports::{
-    DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
+    DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
 use crate::{Ed25519PrivateKey, Ed25519PublicKey};
 use ed25519_dalek::VerifyingKey;
 use std::convert::TryInto;
 use tracing::{debug, info};
 use yubikey::piv::{generate, import_cv_key, sign_data};
-use yubikey::{Context, MgmKey, YubiKey};
+use yubikey::{Context, MgmKey, ObjectId, YubiKey};
+
+/// YubiKey data-object ID used to store the Cardano verifying key alongside an imported key.
+/// Uses the PIV certificate slot object IDs so each active key slot has a companion storage area.
+fn slot_to_vk_object_id(slot: Slot) -> ObjectId {
+    match slot {
+        Slot::Authentication => 0x005F_C105,
+        Slot::Signature => 0x005F_C10A,
+        Slot::KeyManagement => 0x005F_C10B,
+        Slot::CardAuthentication => 0x005F_C101,
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct PivDeviceFinder;
@@ -78,7 +89,12 @@ impl PinVerifier for PivYubiKey {
 }
 
 impl KeyManager for PivYubiKey {
-    fn import_key(&mut self, key: Ed25519PrivateKey, config: KeyConfig) -> YkadaResult<()> {
+    fn import_key(
+        &mut self,
+        key: Ed25519PrivateKey,
+        vk: Ed25519PublicKey,
+        config: KeyConfig,
+    ) -> YkadaResult<()> {
         self.ensure_authenticated()?;
 
         let algorithm = Algorithm::default_cardano();
@@ -98,6 +114,13 @@ impl KeyManager for PivYubiKey {
             config.touch_policy.to_yubikey_touch_policy(),
             config.pin_policy.to_yubikey_pin_policy(),
         )?;
+
+        // Store the Cardano verifying key (kL * G) so `read_public_key` can retrieve it.
+        // The YubiKey firmware uses standard RFC 8032 Ed25519 (SHA-512 expansion), which
+        // produces a different public key than the Cardano one, so metadata() can't be used.
+        let mut vk_bytes = *vk.as_array();
+        self.device
+            .save_object(slot_to_vk_object_id(config.slot), &mut vk_bytes)?;
 
         info!("Key imported successfully to slot {:?}", config.slot);
         Ok(())
@@ -149,8 +172,44 @@ impl KeyManager for PivYubiKey {
                 })?;
 
         let verifying_key = VerifyingKey::from_bytes(&public_key_array)?;
+        let pk = Ed25519PublicKey::from(verifying_key);
 
-        Ok(verifying_key.into())
+        // Store generated public key so read_public_key can retrieve it consistently.
+        let mut vk_bytes = *pk.as_array();
+        self.device
+            .save_object(slot_to_vk_object_id(config.slot), &mut vk_bytes)?;
+
+        Ok(pk)
+    }
+}
+
+impl DeviceReader for PivYubiKey {
+    fn serial(&self) -> u32 {
+        self.device.serial().0
+    }
+
+    fn firmware_version(&self) -> (u8, u8, u8) {
+        let v = self.device.version();
+        (v.major, v.minor, v.patch)
+    }
+
+    fn read_public_key(&mut self, slot: Slot) -> YkadaResult<Option<Ed25519PublicKey>> {
+        // Read the Cardano verifying key stored by import_key / generate_key.
+        // We do NOT use metadata() because the YubiKey firmware uses standard RFC 8032
+        // Ed25519 (SHA-512 seed expansion) to derive its stored public key, which differs
+        // from the Cardano public key kL * G that we need for address derivation.
+        match self.device.fetch_object(slot_to_vk_object_id(slot)) {
+            Ok(bytes) if bytes.len() == 32 => {
+                let arr: [u8; 32] =
+                    bytes[..]
+                        .try_into()
+                        .map_err(|_| YkadaError::InvalidKeyFormat {
+                            format: "Expected 32-byte stored verifying key".to_string(),
+                        })?;
+                Ok(Some(VerifyingKey::from_bytes(&arr)?.into()))
+            }
+            _ => Ok(None),
+        }
     }
 }
 
@@ -189,12 +248,57 @@ impl Signer for PivYubiKey {
 mod tests {
     use super::*;
     use crate::contract_tests_for;
+    use crate::logic::Bech32Encodable;
+    use crate::model::{ManagementKey, Network, SeedPhrase, WalletConfig};
     use crate::ports::contract_tests::yubikey_contract;
+    use crate::use_cases::{generate_wallet_use_case, wallet_info_use_case};
+
+    const TESTING_MANAGEMENT_KEY: ManagementKey = ManagementKey::new([
+        1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 9,
+    ]);
+
+    const KNOWN_PHRASE: &str = "cash antique chimney egg enact blast embody ecology dust fiction hope black crisp thunder tiny fame mixture object text boil odor minor ordinary deer";
+    const KNOWN_ADDRESS_MAINNET: &str = "addr1q803e62cfnzevmtakaqsf4fvew4psjhgpl494ywxeuqdv5pjp2g6fyqjqh0l6k3rp90ltutqhxwfgkvg3tkacwvkuwqsx93m47";
 
     #[test]
     fn test_device_finder_success() {
         let result = PivDeviceFinder.find_first();
         assert!(result.is_ok(), "error: {:?}", result.err());
+    }
+
+    /// Imports the known seed phrase as a Mainnet wallet, then reads the keys back via
+    /// wallet_info_use_case and verifies the derived address matches the known correct value.
+    /// Requires a YubiKey with the testing management key configured.
+    #[test]
+    fn test_known_mainnet_address_round_trip() {
+        let finder = PivDeviceFinder;
+        let seed = SeedPhrase::try_from(KNOWN_PHRASE).expect("Invalid seed phrase");
+        let config = WalletConfig {
+            network: Network::Mainnet,
+            ..WalletConfig::default()
+        };
+
+        generate_wallet_use_case(&finder, seed, config, Some(&TESTING_MANAGEMENT_KEY))
+            .expect("generate_wallet_use_case failed");
+
+        let info = wallet_info_use_case(
+            &finder,
+            config.payment_slot,
+            config.stake_slot,
+            config.network,
+        )
+        .expect("wallet_info_use_case failed");
+
+        let address = info
+            .address
+            .expect("address must be Some when both keys are present")
+            .to_bech32()
+            .expect("bech32 encoding failed");
+
+        assert_eq!(
+            address, KNOWN_ADDRESS_MAINNET,
+            "address mismatch for known seed phrase"
+        );
     }
 
     contract_tests_for!(

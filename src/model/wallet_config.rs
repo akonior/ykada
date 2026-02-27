@@ -1,5 +1,6 @@
 use crate::model::{Network, PinPolicy, Slot, TouchPolicy};
 
+#[derive(Clone, Copy)]
 pub struct WalletConfig {
     pub payment_slot: Slot,
     pub stake_slot: Slot,

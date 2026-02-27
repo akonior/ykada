@@ -5,7 +5,7 @@ pub use crate::model::*;
 use crate::ports::KeyConfig;
 use crate::use_cases::{
     generate_key_use_case, generate_wallet_use_case, import_private_key_from_seed_phrase_use_case,
-    import_private_key_in_der_format_use_case,
+    import_private_key_in_der_format_use_case, wallet_info_use_case,
 };
 use ed25519_dalek::VerifyingKey;
 
@@ -44,6 +44,15 @@ pub fn generate_wallet(
     mgmt_key: Option<&ManagementKey>,
 ) -> YkadaResult<GeneratedWallet> {
     import_wallet(SeedPhrase::generate()?, config, mgmt_key)
+}
+
+pub fn wallet_info(
+    payment_slot: Slot,
+    stake_slot: Slot,
+    network: Network,
+) -> YkadaResult<WalletInfo> {
+    let finder = PivDeviceFinder;
+    wallet_info_use_case(&finder, payment_slot, stake_slot, network)
 }
 
 pub fn import_private_key_from_seed_phrase(

@@ -1,4 +1,5 @@
-use crate::logic::derive_private_key;
+use crate::logic::derive_key_pair;
+use crate::model::{DerivationPath, Ed25519PublicKey, SeedPhrase};
 use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
 use crate::{ManagementKey, YkadaResult};
 use ed25519_dalek::VerifyingKey;
@@ -16,16 +17,22 @@ where
     F: DeviceFinder,
     F::Device: KeyManager + ManagementKeyVerifier,
 {
-    let private_key = derive_private_key(seed_phrase, passphrase, path)?;
-    let verifying_key = private_key.to_signing_key().verifying_key();
+    let seed = SeedPhrase::try_from(seed_phrase)?;
+    let derivation_path = if let Some(path_str) = path {
+        DerivationPath::try_from(path_str)?
+    } else {
+        DerivationPath::default()
+    };
+
+    // derive_key_pair returns (kL, kL*G) — the Cardano private key and its verifying key.
+    let (private_key, cardano_vk) = derive_key_pair(&seed, passphrase, &derivation_path)?;
 
     let mut device = finder.find_first()?;
     device.authenticate(mgmt_key)?;
-
-    device.import_key(private_key, config)?;
+    device.import_key(private_key, Ed25519PublicKey::from(cardano_vk), config)?;
 
     debug!("Key imported successfully");
-    Ok(verifying_key)
+    Ok(cardano_vk)
 }
 
 #[cfg(test)]

@@ -20,7 +20,15 @@ impl Default for KeyConfig {
 }
 
 pub trait KeyManager {
-    fn import_key(&mut self, key: Ed25519PrivateKey, config: KeyConfig) -> YkadaResult<()>;
+    /// Import a private key into the device.
+    /// `vk` is the Cardano verifying key (`kL * G`) associated with `key`;
+    /// the adapter stores it so it can be retrieved later by `DeviceReader::read_public_key`.
+    fn import_key(
+        &mut self,
+        key: Ed25519PrivateKey,
+        vk: Ed25519PublicKey,
+        config: KeyConfig,
+    ) -> YkadaResult<()>;
 
     fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<Ed25519PublicKey>;
 }
