@@ -6,7 +6,7 @@ use tracing::error;
 
 use ykada::{
     api::{
-        Bech32Encodable, Network, PinPolicy, SeedPhrase, Slot, StakeVerifyingKey, TouchPolicy,
+        Bech32Encodable, Network, Pin, PinPolicy, SeedPhrase, Slot, StakeVerifyingKey, TouchPolicy,
         WalletConfig,
     },
     DerPrivateKey,
@@ -110,6 +110,40 @@ pub enum Commands {
         stake_slot: SlotArg,
         #[arg(long, default_value = "preview")]
         network: NetworkArg,
+    },
+
+    #[command(
+        about = "Build an ADA transfer transaction",
+        long_about = "Build an ADA transfer transaction.\n\n\
+            By default outputs unsigned CBOR hex.\n\
+            Use --sign to sign via YubiKey and output signed CBOR hex.\n\
+            Use --send to sign via YubiKey and submit to the network, printing the tx hash."
+    )]
+    BuildTx {
+        /// Recipient bech32 address
+        #[arg(long)]
+        to: String,
+        /// Amount to send in lovelace (1 ADA = 1_000_000 lovelace)
+        #[arg(long)]
+        lovelace: u64,
+        /// Transaction fee in lovelace
+        #[arg(long, default_value = "200000")]
+        fee: u64,
+        #[arg(long, default_value = "signature")]
+        payment_slot: SlotArg,
+        #[arg(long, default_value = "key-management")]
+        stake_slot: SlotArg,
+        #[arg(long, default_value = "preview")]
+        network: NetworkArg,
+        /// Sign the transaction with the YubiKey and output signed CBOR hex (without submitting)
+        #[arg(long, conflicts_with = "send")]
+        sign: bool,
+        /// Sign the transaction with the YubiKey and submit it to the network (outputs tx hash)
+        #[arg(long, conflicts_with = "sign")]
+        send: bool,
+        /// YubiKey PIN (required if the key slot uses PIN-on-sign policy)
+        #[arg(long)]
+        pin: Option<String>,
     },
 }
 
@@ -365,9 +399,8 @@ fn main() -> anyhow::Result<()> {
                 ),
                 None => println!("Stake verifying key:     (none)"),
             }
-            match info.address {
-                Some(addr) => println!("Cardano address:         {}", addr.to_bech32()?),
-                None => {}
+            if let Some(addr) = info.address {
+                println!("Cardano address:         {}", addr.to_bech32()?)
             }
         }
 
@@ -397,6 +430,57 @@ fn main() -> anyhow::Result<()> {
                     "  {}/{}  ×  {}",
                     token.policy_id, token.asset_name, token.quantity
                 );
+            }
+        }
+
+        Commands::BuildTx {
+            to,
+            lovelace,
+            fee,
+            payment_slot,
+            stake_slot,
+            network,
+            sign,
+            send,
+            pin,
+        } => {
+            if send {
+                let pin = pin.map(|p| p.parse::<Pin>()).transpose()?;
+                let tx_hash = ykada::api::send_transaction(
+                    payment_slot.into(),
+                    stake_slot.into(),
+                    network.into(),
+                    &to,
+                    lovelace,
+                    fee,
+                    pin,
+                )
+                .context("failed to sign and submit transaction")?;
+                println!("{tx_hash}");
+            } else if sign {
+                let pin = pin.map(|p| p.parse::<Pin>()).transpose()?;
+                let cbor = ykada::api::sign_transaction(
+                    payment_slot.into(),
+                    stake_slot.into(),
+                    network.into(),
+                    &to,
+                    lovelace,
+                    fee,
+                    pin,
+                )
+                .context("failed to sign transaction")?;
+                println!("{}", hex::encode(&cbor));
+            } else {
+                let cbor = ykada::api::build_transaction(
+                    payment_slot.into(),
+                    stake_slot.into(),
+                    network.into(),
+                    &to,
+                    lovelace,
+                    fee,
+                )
+                .context("failed to build transaction")?;
+                println!("{}", hex::encode(&cbor));
             }
         }
     }

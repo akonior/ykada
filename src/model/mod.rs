@@ -11,6 +11,7 @@ mod pin;
 mod policy;
 mod seed_phrase;
 mod slot;
+mod utxo;
 mod wallet_config;
 mod wallet_info;
 
@@ -29,5 +30,6 @@ pub use pin::{Pin, PinError};
 pub use policy::{PinPolicy, PolicyError, TouchPolicy};
 pub use seed_phrase::{SeedPhrase, SeedPhraseError};
 pub use slot::{Slot, SlotError};
+pub use utxo::Utxo;
 pub use wallet_config::WalletConfig;
 pub use wallet_info::WalletInfo;

@@ -1,29 +1,6 @@
 use crate::model::{CardanoKey, DerivationPath, SeedPhrase};
 use crate::{Ed25519PrivateKey, YkadaResult};
 use ed25519_dalek::VerifyingKey;
-use tracing::debug;
-
-pub fn derive_private_key(
-    seed_phrase: &str,
-    passphrase: &str,
-    path: Option<&str>,
-) -> YkadaResult<Ed25519PrivateKey> {
-    let seed = SeedPhrase::try_from(seed_phrase)?;
-
-    let derivation_path = if let Some(path_str) = path {
-        DerivationPath::try_from(path_str)?
-    } else {
-        DerivationPath::default()
-    };
-
-    debug!("Deriving key from seed phrase");
-    debug!("Derivation path: {:?}", derivation_path);
-
-    let root_key = CardanoKey::from_seed_phrase(&seed, passphrase)?;
-    let derived_key = root_key.derive(&derivation_path);
-
-    Ok(derived_key.private_key())
-}
 
 pub fn derive_key_pair(
     seed: &SeedPhrase,
@@ -38,6 +15,23 @@ pub fn derive_key_pair(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tracing::debug;
+
+    fn derive_private_key(
+        seed_phrase: &str,
+        passphrase: &str,
+        path: Option<&str>,
+    ) -> YkadaResult<Ed25519PrivateKey> {
+        let seed = SeedPhrase::try_from(seed_phrase)?;
+        let derivation_path = match path {
+            Some(path_str) => DerivationPath::try_from(path_str)?,
+            None => DerivationPath::default(),
+        };
+        debug!("Deriving key from seed phrase");
+        debug!("Derivation path: {:?}", derivation_path);
+        let root_key = CardanoKey::from_seed_phrase(&seed, passphrase)?;
+        Ok(root_key.derive(&derivation_path).private_key())
+    }
 
     #[test]
     fn test_derive_private_key() {

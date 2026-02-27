@@ -254,8 +254,7 @@ mod tests {
             ..WalletConfig::default()
         };
 
-        let wallet =
-            generate_wallet_use_case(&finder, seed, config.clone(), Some(&mgmt_key)).unwrap();
+        let wallet = generate_wallet_use_case(&finder, seed, config, Some(&mgmt_key)).unwrap();
         let address = wallet.address.to_bech32().unwrap();
 
         assert_eq!(

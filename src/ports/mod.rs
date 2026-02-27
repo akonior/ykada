@@ -6,6 +6,9 @@ mod key_manager;
 mod mgmt_key_verifier;
 mod pin_verifier;
 mod signer;
+mod tip_fetcher;
+mod tx_submitter;
+mod utxo_fetcher;
 
 pub use balance_fetcher::BalanceFetcher;
 pub use device_finder::DeviceFinder;
@@ -14,6 +17,9 @@ pub use key_manager::{KeyConfig, KeyManager};
 pub use mgmt_key_verifier::ManagementKeyVerifier;
 pub use pin_verifier::PinVerifier;
 pub use signer::Signer;
+pub use tip_fetcher::TipFetcher;
+pub use tx_submitter::TxSubmitter;
+pub use utxo_fetcher::UtxoFetcher;
 
 pub trait YubiKeyOps: PinVerifier + ManagementKeyVerifier + KeyManager + Signer {}
 

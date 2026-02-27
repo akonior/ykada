@@ -1,3 +1,4 @@
+mod build_transaction;
 mod fetch_balance;
 mod generate_key;
 mod generate_wallet;
@@ -5,6 +6,10 @@ mod import_key;
 mod import_seed;
 mod wallet_info;
 
+pub use build_transaction::{
+    build_transaction_use_case, sign_and_submit_transaction_use_case, sign_transaction_use_case,
+    SignAndSubmitParams, TransactionParams,
+};
 pub use fetch_balance::fetch_balance_use_case;
 pub use generate_key::generate_key_use_case;
 pub use generate_wallet::generate_wallet_use_case;
