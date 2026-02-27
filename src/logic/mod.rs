@@ -1,5 +1,7 @@
+mod address;
 mod bech32_encoding;
 mod derive_key;
 
-pub use bech32_encoding::{Bech32Encodable, Bech32Error};
-pub use derive_key::derive_private_key;
+pub use address::derive_cardano_address;
+pub use bech32_encoding::{Bech32Encodable, Bech32Error, StakeVerifyingKey};
+pub use derive_key::{derive_key_pair, derive_private_key};

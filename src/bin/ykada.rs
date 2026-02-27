@@ -5,7 +5,9 @@ use std::io::{self, Read, Write};
 use tracing::error;
 
 use ykada::{
-    api::{Bech32Encodable, PinPolicy, Slot, TouchPolicy},
+    api::{
+        Bech32Encodable, Network, PinPolicy, Slot, StakeVerifyingKey, TouchPolicy, WalletConfig,
+    },
     DerPrivateKey,
 };
 
@@ -37,8 +39,28 @@ pub enum Commands {
     #[command(about = "Sign data using the YubiKey")]
     Sign,
 
-    #[command(about = "Generate a new key in the YubiKey")]
+    #[command(about = "Generate a new wallet: random seed, two keys on YubiKey, Cardano address")]
     Generate {
+        #[arg(long, default_value = "signature")]
+        payment_slot: SlotArg,
+        #[arg(long, default_value = "key-management")]
+        stake_slot: SlotArg,
+        #[arg(long, default_value = "always")]
+        pin_policy: PinPolicyArg,
+        #[arg(long, default_value = "always")]
+        touch_policy: TouchPolicyArg,
+        #[arg(long)]
+        mgmt_key: Option<String>,
+        #[arg(long, default_value = "testnet")]
+        network: NetworkArg,
+    },
+
+    #[command(
+        name = "generate-legacy",
+        hide = true,
+        about = "Generate a new key in the YubiKey (legacy hardware-only)"
+    )]
+    GenerateLegacy {
         #[command(flatten)]
         key_options: KeyOptions,
     },
@@ -115,6 +137,21 @@ impl From<TouchPolicyArg> for TouchPolicy {
     }
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum NetworkArg {
+    Mainnet,
+    Testnet,
+}
+
+impl From<NetworkArg> for Network {
+    fn from(arg: NetworkArg) -> Self {
+        match arg {
+            NetworkArg::Mainnet => Network::Mainnet,
+            NetworkArg::Testnet => Network::Testnet,
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
@@ -169,7 +206,36 @@ fn main() -> anyhow::Result<()> {
             let signature = ykada::sign_bin_data(&data);
             std::io::stdout().write_all(&signature)?;
         }
-        Commands::Generate { key_options } => {
+        Commands::Generate {
+            payment_slot,
+            stake_slot,
+            pin_policy,
+            touch_policy,
+            mgmt_key,
+            network,
+        } => {
+            let config = WalletConfig {
+                payment_slot: payment_slot.into(),
+                stake_slot: stake_slot.into(),
+                pin_policy: pin_policy.into(),
+                touch_policy: touch_policy.into(),
+                network: network.into(),
+            };
+            let mgmt_key_opt = mgmt_key.map(|s| s.try_into()).transpose()?;
+            let wallet = ykada::generate_wallet(config, mgmt_key_opt.as_ref())?;
+            println!("Mnemonic (store safely): {}", wallet.mnemonic.phrase());
+            println!(
+                "Payment verifying key:   {}",
+                wallet.payment_vk.to_bech32()?
+            );
+            println!(
+                "Stake verifying key:     {}",
+                StakeVerifyingKey(wallet.stake_vk).to_bech32()?
+            );
+            println!("Cardano address:         {}", wallet.address.to_bech32()?);
+        }
+
+        Commands::GenerateLegacy { key_options } => {
             let config = ykada::ports::KeyConfig {
                 slot: key_options.slot.into(),
                 pin_policy: key_options.pin_policy.into(),
@@ -188,6 +254,7 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+
         Commands::Info => {
             error!("Not implemented");
         }
@@ -212,7 +279,7 @@ mod tests {
     fn test_cli_generate() {
         let mut cmd = Command::cargo_bin("ykada").unwrap();
         let result = cmd
-            .arg("generate")
+            .arg("generate-legacy")
             .arg("--mgmt-key")
             .arg("010203040506070801020304050607080102030405060709")
             .assert();

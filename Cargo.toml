@@ -44,6 +44,7 @@ ed25519-bip32 = "0.4"
 
 # Encoding
 bech32 = "0.9"
+blake2 = "0.10"
 
 # CLI dependencies (optional, only with "cli" feature)
 clap = { version = "4.5.53", features = ["derive"], optional = true }
@@ -52,12 +53,13 @@ clap-verbosity-flag = { version = "3.0.4", default-features = false, features = 
 ], optional = true }
 tracing-subscriber = { version = "0.3", optional = true }
 
+rand = "0.9"
+
 # Development/testing only
 env_logger = "0.11.8"
 
 [dev-dependencies]
 assert_cmd = "=2.0.17"
-rand = "0.9"
 
 # The profile that 'dist' will build with
 [profile.dist]
