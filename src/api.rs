@@ -1,11 +1,12 @@
-use crate::adapters::PivDeviceFinder;
+use crate::adapters::{KoiosClient, PivDeviceFinder};
 use crate::error::YkadaResult;
 pub use crate::logic::{Bech32Encodable, Bech32Error, StakeVerifyingKey};
 pub use crate::model::*;
 use crate::ports::KeyConfig;
 use crate::use_cases::{
-    generate_key_use_case, generate_wallet_use_case, import_private_key_from_seed_phrase_use_case,
-    import_private_key_in_der_format_use_case, wallet_info_use_case,
+    fetch_balance_use_case, generate_key_use_case, generate_wallet_use_case,
+    import_private_key_from_seed_phrase_use_case, import_private_key_in_der_format_use_case,
+    wallet_info_use_case,
 };
 use ed25519_dalek::VerifyingKey;
 
@@ -53,6 +54,11 @@ pub fn wallet_info(
 ) -> YkadaResult<WalletInfo> {
     let finder = PivDeviceFinder;
     wallet_info_use_case(&finder, payment_slot, stake_slot, network)
+}
+
+pub fn fetch_balance(address: &CardanoAddress, network: Network) -> YkadaResult<AccountBalance> {
+    let client = KoiosClient::for_network(network);
+    fetch_balance_use_case(&client, address)
 }
 
 pub fn import_private_key_from_seed_phrase(

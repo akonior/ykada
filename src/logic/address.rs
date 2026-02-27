@@ -31,7 +31,7 @@ mod tests {
     fn test_hash_is_28_bytes() {
         let payment_vk = make_verifying_key(1);
         let stake_vk = make_verifying_key(2);
-        let addr = derive_cardano_address(&payment_vk, &stake_vk, Network::Testnet);
+        let addr = derive_cardano_address(&payment_vk, &stake_vk, Network::Preview);
         assert_eq!(addr.to_bytes().len(), 57);
     }
 
@@ -39,7 +39,7 @@ mod tests {
     fn test_testnet_address_prefix() {
         let payment_vk = make_verifying_key(1);
         let stake_vk = make_verifying_key(2);
-        let addr = derive_cardano_address(&payment_vk, &stake_vk, Network::Testnet);
+        let addr = derive_cardano_address(&payment_vk, &stake_vk, Network::Preview);
         let encoded = addr.to_bech32().unwrap();
         assert!(encoded.starts_with("addr_test1"), "got: {}", encoded);
     }

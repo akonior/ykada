@@ -39,7 +39,7 @@ pub enum Commands {
         touch_policy: TouchPolicyArg,
         #[arg(long)]
         mgmt_key: Option<String>,
-        #[arg(long, default_value = "testnet")]
+        #[arg(long, default_value = "preview")]
         network: NetworkArg,
     },
 
@@ -76,7 +76,7 @@ pub enum Commands {
         touch_policy: TouchPolicyArg,
         #[arg(long)]
         mgmt_key: Option<String>,
-        #[arg(long, default_value = "testnet")]
+        #[arg(long, default_value = "preview")]
         network: NetworkArg,
     },
 
@@ -96,7 +96,19 @@ pub enum Commands {
         payment_slot: SlotArg,
         #[arg(long, default_value = "key-management")]
         stake_slot: SlotArg,
-        #[arg(long, default_value = "testnet")]
+        #[arg(long, default_value = "preview")]
+        network: NetworkArg,
+    },
+
+    #[command(
+        about = "Show on-chain ADA and token balance for the wallet address on the connected YubiKey"
+    )]
+    Balance {
+        #[arg(long, default_value = "signature")]
+        payment_slot: SlotArg,
+        #[arg(long, default_value = "key-management")]
+        stake_slot: SlotArg,
+        #[arg(long, default_value = "preview")]
         network: NetworkArg,
     },
 }
@@ -172,14 +184,16 @@ impl From<TouchPolicyArg> for TouchPolicy {
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum NetworkArg {
     Mainnet,
-    Testnet,
+    Preprod,
+    Preview,
 }
 
 impl From<NetworkArg> for Network {
     fn from(arg: NetworkArg) -> Self {
         match arg {
             NetworkArg::Mainnet => Network::Mainnet,
-            NetworkArg::Testnet => Network::Testnet,
+            NetworkArg::Preprod => Network::Preprod,
+            NetworkArg::Preview => Network::Preview,
         }
     }
 }
@@ -354,6 +368,35 @@ fn main() -> anyhow::Result<()> {
             match info.address {
                 Some(addr) => println!("Cardano address:         {}", addr.to_bech32()?),
                 None => {}
+            }
+        }
+
+        Commands::Balance {
+            payment_slot,
+            stake_slot,
+            network,
+        } => {
+            let info =
+                ykada::api::wallet_info(payment_slot.into(), stake_slot.into(), network.into())
+                    .context("failed to read device info")?;
+
+            let addr = info.address.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No Cardano address found on this YubiKey — import or generate a wallet first"
+                )
+            })?;
+
+            let balance = ykada::api::fetch_balance(&addr, network.into())
+                .context("failed to fetch balance")?;
+
+            println!("Cardano address:  {}", addr.to_bech32()?);
+            println!("Account balance:");
+            println!("  ADA:            {:.6}", balance.ada());
+            for token in &balance.tokens {
+                println!(
+                    "  {}/{}  ×  {}",
+                    token.policy_id, token.asset_name, token.quantity
+                );
             }
         }
     }

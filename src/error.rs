@@ -45,4 +45,10 @@ pub enum YkadaError {
 
     #[error("Invalid key format: {format}")]
     InvalidKeyFormat { format: String },
+
+    #[error("Network error: {0}")]
+    NetworkError(String),
+
+    #[error("Bech32 error: {0}")]
+    Bech32(#[from] crate::logic::Bech32Error),
 }

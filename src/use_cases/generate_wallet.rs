@@ -101,7 +101,7 @@ mod tests {
         let finder = make_finder();
         let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
         let config = WalletConfig {
-            network: Network::Testnet,
+            network: Network::Preview,
             ..WalletConfig::default()
         };
         let mgmt_key = make_mgmt_key();

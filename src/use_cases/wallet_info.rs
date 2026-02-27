@@ -110,7 +110,7 @@ mod tests {
             &finder,
             Slot::Signature,
             Slot::KeyManagement,
-            Network::Testnet,
+            Network::Preview,
         );
 
         assert!(result.is_ok(), "error: {:?}", result.err());
@@ -129,7 +129,7 @@ mod tests {
             &finder,
             Slot::Signature,
             Slot::KeyManagement,
-            Network::Testnet,
+            Network::Preview,
         )
         .unwrap();
 
@@ -166,7 +166,7 @@ mod tests {
             &finder,
             Slot::Signature,
             Slot::KeyManagement,
-            Network::Testnet,
+            Network::Preview,
         )
         .unwrap();
 
@@ -182,7 +182,7 @@ mod tests {
             &finder,
             Slot::Signature,
             Slot::KeyManagement,
-            Network::Testnet,
+            Network::Preview,
         )
         .unwrap();
 
@@ -199,7 +199,7 @@ mod tests {
             &finder,
             Slot::Signature,
             Slot::KeyManagement,
-            Network::Testnet,
+            Network::Preview,
         )
         .unwrap();
 
@@ -220,7 +220,7 @@ mod tests {
         let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
         let (_, payment_vk) = derive_key_pair(&seed, "", &payment_path).unwrap();
         let (_, stake_vk) = derive_key_pair(&seed, "", &stake_path).unwrap();
-        let expected_address = derive_cardano_address(&payment_vk, &stake_vk, Network::Testnet)
+        let expected_address = derive_cardano_address(&payment_vk, &stake_vk, Network::Preview)
             .to_bech32()
             .unwrap();
 
@@ -231,7 +231,7 @@ mod tests {
             &finder,
             Slot::Signature,
             Slot::KeyManagement,
-            Network::Testnet,
+            Network::Preview,
         )
         .unwrap();
         let info_address = info.address.unwrap().to_bech32().unwrap();

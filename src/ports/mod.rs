@@ -1,3 +1,4 @@
+mod balance_fetcher;
 pub(crate) mod contract_tests;
 mod device_finder;
 mod device_reader;
@@ -6,6 +7,7 @@ mod mgmt_key_verifier;
 mod pin_verifier;
 mod signer;
 
+pub use balance_fetcher::BalanceFetcher;
 pub use device_finder::DeviceFinder;
 pub use device_reader::DeviceReader;
 pub use key_manager::{KeyConfig, KeyManager};

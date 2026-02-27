@@ -1,3 +1,4 @@
+mod account_balance;
 mod algorithm;
 mod cardano_address;
 mod cardano_key;
@@ -13,6 +14,7 @@ mod slot;
 mod wallet_config;
 mod wallet_info;
 
+pub use account_balance::{AccountBalance, TokenBalance};
 pub use algorithm::{Algorithm, AlgorithmError};
 pub use cardano_address::CardanoAddress;
 pub use cardano_key::{CardanoKey, CardanoKeyError};

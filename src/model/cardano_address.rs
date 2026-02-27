@@ -24,7 +24,7 @@ impl CardanoAddress {
 
     pub fn to_bytes(&self) -> [u8; 57] {
         let header = match self.network {
-            Network::Testnet => 0x00u8,
+            Network::Preprod | Network::Preview => 0x00u8,
             Network::Mainnet => 0x01u8,
         };
         let mut bytes = [0u8; 57];
@@ -39,7 +39,7 @@ impl Bech32Encodable for CardanoAddress {
     fn to_bech32(&self) -> Result<String, Bech32Error> {
         let hrp = match self.network {
             Network::Mainnet => "addr",
-            Network::Testnet => "addr_test",
+            Network::Preprod | Network::Preview => "addr_test",
         };
         bech32::encode(hrp, self.to_bytes().to_base32(), bech32::Variant::Bech32)
             .map_err(Bech32Error::from)
@@ -54,7 +54,7 @@ mod tests {
     fn test_to_bytes_testnet_header() {
         let payment_hash = [1u8; 28];
         let stake_hash = [2u8; 28];
-        let addr = CardanoAddress::from_key_hashes(payment_hash, stake_hash, Network::Testnet);
+        let addr = CardanoAddress::from_key_hashes(payment_hash, stake_hash, Network::Preview);
         let bytes = addr.to_bytes();
         assert_eq!(bytes.len(), 57);
         assert_eq!(bytes[0], 0x00);
@@ -76,7 +76,7 @@ mod tests {
     fn test_bech32_testnet_prefix() {
         let payment_hash = [1u8; 28];
         let stake_hash = [2u8; 28];
-        let addr = CardanoAddress::from_key_hashes(payment_hash, stake_hash, Network::Testnet);
+        let addr = CardanoAddress::from_key_hashes(payment_hash, stake_hash, Network::Preview);
         let encoded = addr.to_bech32().unwrap();
         assert!(encoded.starts_with("addr_test1"), "got: {}", encoded);
     }
