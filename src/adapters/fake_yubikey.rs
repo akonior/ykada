@@ -8,6 +8,7 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::rng;
 use rand::RngCore;
 use std::collections::HashMap;
+use tracing::{debug, info};
 
 #[derive(Debug, Clone)]
 pub struct FakeYubiKey {
@@ -71,7 +72,14 @@ impl KeyManager for FakeYubiKey {
         if !self.authenticated {
             return Err(YkadaError::YubikeyLib(yubikey::Error::AuthenticationError));
         }
+        debug!(
+            "FakeYubiKey importing key to slot {:?}: private_key={} vk={}",
+            config.slot,
+            hex::encode(key.as_bytes()),
+            hex::encode(vk.as_bytes()),
+        );
         self.keys.insert(config.slot, (key, vk.to_verifying_key()));
+        info!("FakeYubiKey: key imported to slot {:?}", config.slot);
         Ok(())
     }
 
@@ -108,6 +116,13 @@ impl Signer for FakeYubiKey {
             self.verify_pin(pin)?;
         }
 
+        debug!(
+            "FakeYubiKey signing with slot {:?}: data_len={} data={}",
+            slot,
+            data.len(),
+            hex::encode(data),
+        );
+
         let (signing_key, _) = self
             .keys
             .get(&slot)
@@ -115,7 +130,16 @@ impl Signer for FakeYubiKey {
 
         use ed25519_dalek::Signer;
         let signature = signing_key.to_signing_key().sign(data);
-        Ok(signature.to_bytes().to_vec())
+        let sig_bytes = signature.to_bytes().to_vec();
+
+        debug!("FakeYubiKey signature: {}", hex::encode(&sig_bytes));
+        info!(
+            "FakeYubiKey: signed {} bytes in slot {:?}",
+            data.len(),
+            slot
+        );
+
+        Ok(sig_bytes)
     }
 }
 

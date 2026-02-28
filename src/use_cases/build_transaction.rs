@@ -2,6 +2,7 @@ use pallas_addresses::Address;
 use pallas_crypto::hash::Hash;
 use pallas_crypto::key::ed25519::PublicKey as PallasPublicKey;
 use pallas_txbuilder::{BuildConway, BuiltTransaction, Input, Output, StagingTransaction};
+use tracing::{debug, info};
 
 use crate::error::{YkadaError, YkadaResult};
 use crate::logic::Bech32Encodable;
@@ -35,12 +36,24 @@ where
     T: TipFetcher,
 {
     let change_bech32 = params.change_address.to_bech32()?;
+    info!("Building unsigned transaction (change: {})", change_bech32);
+
     let utxos = utxo_fetcher.fetch_utxos(&change_bech32)?;
+    debug!("Fetched {} UTxO(s)", utxos.len());
+
     let tip_slot = tip_fetcher.fetch_tip_slot()?;
+    debug!("Chain tip slot: {}", tip_slot);
 
     let built = build_staged(&utxos, tip_slot, &params)?
         .build_conway_raw()
         .map_err(|e| YkadaError::NetworkError(format!("tx build error: {e}")))?;
+
+    info!(
+        "Unsigned transaction built ({} bytes)",
+        built.tx_bytes.0.len()
+    );
+    debug!("Transaction body hash: {}", hex::encode(&built.tx_hash.0));
+    debug!("Unsigned CBOR: {}", hex::encode(&built.tx_bytes.0));
 
     Ok(built.tx_bytes.0)
 }
@@ -73,7 +86,10 @@ where
     X: TxSubmitter,
 {
     let signed = build_and_sign(utxo_fetcher, tip_fetcher, signer, params)?;
-    tx_submitter.submit_tx(&signed.tx_bytes.0)
+    info!("Submitting transaction to network");
+    let tx_hash = tx_submitter.submit_tx(&signed.tx_bytes.0)?;
+    info!("Transaction submitted: {}", tx_hash);
+    Ok(tx_hash)
 }
 
 fn build_and_sign<U, T, S>(
@@ -95,12 +111,29 @@ where
     };
 
     let change_bech32 = core_params.change_address.to_bech32()?;
+    info!(
+        "Building and signing transaction (change: {})",
+        change_bech32
+    );
+
     let utxos = utxo_fetcher.fetch_utxos(&change_bech32)?;
+    debug!("Fetched {} UTxO(s)", utxos.len());
+
     let tip_slot = tip_fetcher.fetch_tip_slot()?;
+    debug!("Chain tip slot: {}", tip_slot);
 
     let built = build_staged(&utxos, tip_slot, &core_params)?
         .build_conway_raw()
         .map_err(|e| YkadaError::NetworkError(format!("tx build error: {e}")))?;
+
+    debug!("Transaction body hash: {}", hex::encode(&built.tx_hash.0));
+    debug!("Unsigned CBOR: {}", hex::encode(&built.tx_bytes.0));
+
+    info!(
+        "Signing transaction (slot: {:?}) hash: {}",
+        params.payment_slot,
+        hex::encode(&built.tx_hash.0)
+    );
 
     let sig_bytes = signer.sign(
         &built.tx_hash.0,
@@ -109,15 +142,27 @@ where
         params.pin.as_ref(),
     )?;
 
+    debug!(
+        "Signature ({} bytes): {}",
+        sig_bytes.len(),
+        hex::encode(&sig_bytes)
+    );
+
     let sig: [u8; 64] = sig_bytes
         .try_into()
         .map_err(|_| YkadaError::NetworkError("signature must be 64 bytes".into()))?;
 
     let pubkey = PallasPublicKey::from(params.payment_vkey);
+    debug!("Verification key: {}", hex::encode(params.payment_vkey));
 
-    built
+    let signed = built
         .add_signature(pubkey, sig)
-        .map_err(|e| YkadaError::NetworkError(format!("add signature error: {e}")))
+        .map_err(|e| YkadaError::NetworkError(format!("add signature error: {e}")))?;
+
+    info!("Transaction signed ({} bytes)", signed.tx_bytes.0.len());
+    debug!("Signed CBOR: {}", hex::encode(&signed.tx_bytes.0));
+
+    Ok(signed)
 }
 
 fn build_staged(
@@ -134,6 +179,18 @@ fn build_staged(
     let required = params.send_lovelace + params.fee_lovelace;
     let (selected_indices, total_input) = select_inputs(utxos, required)?;
     let change_lovelace = total_input - required;
+
+    debug!(
+        "Coin selection: {} UTxO(s) selected, total_input={} lovelace, required={} lovelace, change={} lovelace",
+        selected_indices.len(), total_input, required, change_lovelace
+    );
+    for &i in &selected_indices {
+        debug!("  Input: {}#{}", utxos[i].tx_hash, utxos[i].tx_index);
+    }
+    debug!(
+        "Outputs: send={} lovelace to recipient, {} lovelace change back, fee={} lovelace, TTL slot={}",
+        params.send_lovelace, change_lovelace, params.fee_lovelace, tip_slot + 7200
+    );
 
     selected_indices
         .iter()

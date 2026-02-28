@@ -105,6 +105,8 @@ impl KeyManager for PivYubiKey {
             "Policies: PIN={:?}, Touch={:?}",
             config.pin_policy, config.touch_policy
         );
+        debug!("Private key (seed): {}", hex::encode(key.as_bytes()));
+        debug!("Verifying key: {}", hex::encode(vk.as_bytes()));
 
         import_cv_key(
             &mut self.device,
@@ -226,10 +228,11 @@ impl Signer for PivYubiKey {
         }
 
         debug!(
-            "Signing {} bytes using slot {:?}, algorithm {:?}",
+            "Signing {} bytes with YubiKey: slot={:?} algorithm={:?} data={}",
             data.len(),
             slot,
-            algorithm
+            algorithm,
+            hex::encode(data),
         );
 
         let signature = sign_data(
@@ -239,8 +242,10 @@ impl Signer for PivYubiKey {
             slot.to_yubikey_slot_id(),
         )?;
 
-        debug!("Signature generated successfully");
-        Ok(signature.to_vec())
+        let sig_bytes = signature.to_vec();
+        debug!("YubiKey signature: {}", hex::encode(&sig_bytes));
+        info!("YubiKey: signed {} bytes in slot {:?}", data.len(), slot);
+        Ok(sig_bytes)
     }
 }
 

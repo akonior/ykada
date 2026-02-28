@@ -1,9 +1,10 @@
 use crate::error::YkadaResult;
-use crate::logic::{derive_cardano_address, derive_key_pair};
+use crate::logic::{derive_cardano_address, derive_key_pair, Bech32Encodable};
 use crate::model::{
     DerivationPath, Ed25519PublicKey, GeneratedWallet, ManagementKey, SeedPhrase, WalletConfig,
 };
 use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
+use tracing::{debug, info};
 
 pub fn generate_wallet_use_case<F>(
     finder: &F,
@@ -15,13 +16,32 @@ where
     F: DeviceFinder,
     F::Device: KeyManager + ManagementKeyVerifier,
 {
+    info!("Generating Cardano wallet (network: {:?})", config.network);
+
     let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0")?;
     let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0")?;
 
     let (payment_sk, payment_vk) = derive_key_pair(&seed, "", &payment_path)?;
+    debug!(
+        "Payment private key: {}",
+        hex::encode(payment_sk.as_bytes())
+    );
+    debug!(
+        "Payment verifying key: {}",
+        hex::encode(payment_vk.as_bytes())
+    );
+
     let (stake_sk, stake_vk) = derive_key_pair(&seed, "", &stake_path)?;
+    debug!("Stake private key: {}", hex::encode(stake_sk.as_bytes()));
+    debug!("Stake verifying key: {}", hex::encode(stake_vk.as_bytes()));
 
     let address = derive_cardano_address(&payment_vk, &stake_vk, config.network);
+    debug!(
+        "Derived address: {}",
+        address
+            .to_bech32()
+            .unwrap_or_else(|_| hex::encode(address.to_bytes()))
+    );
 
     let mut device = finder.find_first()?;
     device.authenticate(mgmt_key)?;
@@ -43,6 +63,13 @@ where
         payment_config,
     )?;
     device.import_key(stake_sk, Ed25519PublicKey::from(stake_vk), stake_config)?;
+
+    info!(
+        "Wallet generated: address={}",
+        address
+            .to_bech32()
+            .unwrap_or_else(|_| hex::encode(address.to_bytes()))
+    );
 
     Ok(GeneratedWallet {
         mnemonic: seed,
