@@ -160,11 +160,17 @@ impl TipFetcher for KoiosClient {
 
 impl TxSubmitter for KoiosClient {
     fn submit_tx(&self, signed_tx_cbor: &[u8]) -> YkadaResult<String> {
-        let url = format!("{}/submit_tx", self.base_url);
+        let url = format!("{}/submittx", self.base_url);
         let response = ureq::post(&url)
             .set("Content-Type", "application/cbor")
             .send_bytes(signed_tx_cbor)
-            .map_err(|e| YkadaError::NetworkError(e.to_string()))?
+            .map_err(|e| match e {
+                ureq::Error::Status(code, resp) => {
+                    let body = resp.into_string().unwrap_or_default();
+                    YkadaError::NetworkError(format!("HTTP {code}: {body}"))
+                }
+                other => YkadaError::NetworkError(other.to_string()),
+            })?
             .into_string()
             .map_err(|e| YkadaError::NetworkError(e.to_string()))?;
         Ok(response.trim().trim_matches('"').to_string())
