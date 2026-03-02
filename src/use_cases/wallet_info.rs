@@ -56,7 +56,7 @@ mod tests {
         "cash antique chimney egg enact blast embody ecology dust fiction hope black crisp thunder tiny fame mixture object text boil odor minor ordinary deer";
 
     const KNOWN_ADDRESS_MAINNET: &str =
-        "addr1q803e62cfnzevmtakaqsf4fvew4psjhgpl494ywxeuqdv5pjp2g6fyqjqh0l6k3rp90ltutqhxwfgkvg3tkacwvkuwqsx93m47";
+        "addr1qx2l2ttwpsxc8j4830x7hpz0qgaf2hkt6dn7x940vcneycwcnz39fcfw4xs5elpnpmfmh45vhx2qk3h8q56ma0zg9nnsvzxxtr";
 
     fn make_mgmt_key() -> ManagementKey {
         ManagementKey::new([

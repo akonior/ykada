@@ -1,6 +1,6 @@
 use crate::model::{CardanoKey, DerivationPath, SeedPhrase};
 use crate::{Ed25519PrivateKey, YkadaResult};
-use ed25519_dalek::VerifyingKey;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 
 pub fn derive_key_pair(
     seed: &SeedPhrase,
@@ -9,7 +9,15 @@ pub fn derive_key_pair(
 ) -> YkadaResult<(Ed25519PrivateKey, VerifyingKey)> {
     let root = CardanoKey::from_seed_phrase(seed, passphrase)?;
     let derived = root.derive(path);
-    Ok((derived.private_key(), derived.verifying_key()))
+    let private_key = derived.private_key();
+    // Both the real YubiKey (import_cv_key) and FakeYubiKey.sign() treat the imported
+    // kL bytes as an Ed25519 seed (RFC 8032): they internally expand via SHA-512 and
+    // sign with SHA512_clamped(kL).  The corresponding public key is therefore also
+    // derived via RFC 8032, NOT via direct scalar multiplication (kL * G) as the
+    // Cardano BIP32-Ed25519 spec would give.  Using the RFC 8032 verifying key here
+    // ensures the witness VKey matches the actual signing key on the device.
+    let verifying_key = SigningKey::from_bytes(private_key.as_array()).verifying_key();
+    Ok((private_key, verifying_key))
 }
 
 #[cfg(test)]
