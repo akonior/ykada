@@ -112,6 +112,25 @@ pub enum Commands {
         network: NetworkArg,
     },
 
+    #[command(about = "Sign a pre-built transaction from a file (e.g. Eternl export)")]
+    SignTx {
+        /// Path to the unsigned transaction JSON file (must contain a "cborHex" field)
+        #[arg(long)]
+        tx_file: String,
+        /// Sign and submit to the network (outputs tx hash instead of signed CBOR)
+        #[arg(long)]
+        send: bool,
+        #[arg(long, default_value = "signature")]
+        payment_slot: SlotArg,
+        #[arg(long, default_value = "key-management")]
+        stake_slot: SlotArg,
+        #[arg(long, default_value = "preview")]
+        network: NetworkArg,
+        /// YubiKey PIN (required if the key slot uses PIN-on-sign policy)
+        #[arg(long)]
+        pin: Option<String>,
+    },
+
     #[command(
         about = "Build an ADA transfer transaction",
         long_about = "Build an ADA transfer transaction.\n\n\
@@ -430,6 +449,40 @@ fn main() -> anyhow::Result<()> {
                     "  {}/{}  ×  {}",
                     token.policy_id, token.asset_name, token.quantity
                 );
+            }
+        }
+
+        Commands::SignTx {
+            tx_file,
+            send,
+            payment_slot,
+            stake_slot,
+            network,
+            pin,
+        } => {
+            let content = std::fs::read_to_string(&tx_file)
+                .with_context(|| format!("failed to read transaction file: {tx_file}"))?;
+            let pin = pin.map(|p| p.parse::<Pin>()).transpose()?;
+            if send {
+                let tx_hash = ykada::api::sign_and_send_external_tx(
+                    &content,
+                    payment_slot.into(),
+                    stake_slot.into(),
+                    network.into(),
+                    pin,
+                )
+                .context("failed to sign and submit transaction")?;
+                println!("{tx_hash}");
+            } else {
+                let cbor = ykada::api::sign_external_tx(
+                    &content,
+                    payment_slot.into(),
+                    stake_slot.into(),
+                    network.into(),
+                    pin,
+                )
+                .context("failed to sign transaction")?;
+                println!("{}", hex::encode(&cbor));
             }
         }
 

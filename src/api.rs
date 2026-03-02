@@ -6,8 +6,10 @@ use crate::ports::{DeviceFinder, KeyConfig};
 use crate::use_cases::{
     build_transaction_use_case, fetch_balance_use_case, generate_key_use_case,
     generate_wallet_use_case, import_private_key_from_seed_phrase_use_case,
-    import_private_key_in_der_format_use_case, sign_and_submit_transaction_use_case,
-    sign_transaction_use_case, wallet_info_use_case, SignAndSubmitParams, TransactionParams,
+    import_private_key_in_der_format_use_case, parse_tx_file_json,
+    sign_and_submit_external_tx_use_case, sign_and_submit_transaction_use_case,
+    sign_external_tx_use_case, sign_transaction_use_case, wallet_info_use_case,
+    SignAndSubmitParams, SignExternalTxParams, TransactionParams,
 };
 use ed25519_dalek::VerifyingKey;
 
@@ -191,5 +193,65 @@ pub fn import_private_key_from_seed_phrase(
         path,
         config,
         mgmt_key,
+    )
+}
+
+pub fn sign_external_tx(
+    tx_file_content: &str,
+    payment_slot: Slot,
+    stake_slot: Slot,
+    network: Network,
+    pin: Option<Pin>,
+) -> YkadaResult<Vec<u8>> {
+    let unsigned_cbor = parse_tx_file_json(tx_file_content)?;
+    let info = wallet_info(payment_slot, stake_slot, network)?;
+    let payment_vkey: [u8; 32] = info
+        .payment_vk
+        .ok_or_else(|| {
+            YkadaError::NetworkError("no payment key on YubiKey — import a wallet first".into())
+        })?
+        .to_bytes();
+
+    let finder = PivDeviceFinder;
+    let mut yubikey = finder.find_first()?;
+    sign_external_tx_use_case(
+        &mut yubikey,
+        &unsigned_cbor,
+        SignExternalTxParams {
+            payment_vkey,
+            payment_slot,
+            pin,
+        },
+    )
+}
+
+pub fn sign_and_send_external_tx(
+    tx_file_content: &str,
+    payment_slot: Slot,
+    stake_slot: Slot,
+    network: Network,
+    pin: Option<Pin>,
+) -> YkadaResult<String> {
+    let unsigned_cbor = parse_tx_file_json(tx_file_content)?;
+    let info = wallet_info(payment_slot, stake_slot, network)?;
+    let payment_vkey: [u8; 32] = info
+        .payment_vk
+        .ok_or_else(|| {
+            YkadaError::NetworkError("no payment key on YubiKey — import a wallet first".into())
+        })?
+        .to_bytes();
+
+    let finder = PivDeviceFinder;
+    let mut yubikey = finder.find_first()?;
+    let client = KoiosClient::for_network(network);
+    sign_and_submit_external_tx_use_case(
+        &mut yubikey,
+        &client,
+        &unsigned_cbor,
+        SignExternalTxParams {
+            payment_vkey,
+            payment_slot,
+            pin,
+        },
     )
 }
