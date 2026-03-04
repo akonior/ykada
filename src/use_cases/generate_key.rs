@@ -16,8 +16,7 @@ where
 
     device.authenticate(mgmt_key)?;
 
-    let public_key = device.generate_key(config)?;
-    Ok(public_key.to_verifying_key())
+    device.generate_key(config)
 }
 
 #[cfg(test)]

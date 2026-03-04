@@ -1,20 +1,24 @@
 use crate::error::{YkadaError, YkadaResult};
 use crate::model::{Algorithm, ManagementKey, Pin, Slot};
 use crate::ports::{
-    DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
+    DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
-use crate::{Ed25519PrivateKey, Ed25519PublicKey};
+use crate::run_yubikey_contract_tests;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::rng;
 use rand::RngCore;
 use std::collections::HashMap;
+use tracing::{debug, info};
+
 #[derive(Debug, Clone)]
 pub struct FakeYubiKey {
     pub pin: Pin,
     pub mgmt_key: ManagementKey,
-    pub keys: HashMap<Slot, (Ed25519PrivateKey, VerifyingKey)>,
+    pub keys: HashMap<Slot, SigningKey>,
     pub authenticated: bool,
     pub pin_verified: bool,
+    pub serial: u32,
+    pub firmware: (u8, u8, u8),
 }
 
 impl FakeYubiKey {
@@ -27,6 +31,8 @@ impl FakeYubiKey {
             keys: HashMap::new(),
             authenticated: false,
             pin_verified: false,
+            serial: 0,
+            firmware: (5, 4, 3),
         }
     }
 }
@@ -57,35 +63,40 @@ impl ManagementKeyVerifier for FakeYubiKey {
 }
 
 impl KeyManager for FakeYubiKey {
-    fn import_key(&mut self, key: Ed25519PrivateKey, config: KeyConfig) -> YkadaResult<()> {
+    fn import_key(
+        &mut self,
+        key: SigningKey,
+        vk: VerifyingKey,
+        config: KeyConfig,
+    ) -> YkadaResult<()> {
         if !self.authenticated {
             return Err(YkadaError::YubikeyLib(yubikey::Error::AuthenticationError));
         }
-
-        let signing_key = SigningKey::from_bytes(key.as_array());
-        let verifying_key = signing_key.verifying_key();
-        self.keys.insert(config.slot, (key, verifying_key));
+        debug!(
+            "FakeYubiKey importing key to slot {:?}: private_key={} vk={}",
+            config.slot,
+            hex::encode(key.as_bytes()),
+            hex::encode(vk.as_bytes()),
+        );
+        self.keys.insert(config.slot, key);
+        info!("FakeYubiKey: key imported to slot {:?}", config.slot);
         Ok(())
     }
 
-    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<Ed25519PublicKey> {
+    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<VerifyingKey> {
         if !self.authenticated {
             return Err(YkadaError::AuthenticationFailed {
                 reason: "Not authenticated".to_string(),
             });
         }
 
-        use ed25519_dalek::SecretKey;
         let mut secret_bytes = [0u8; 32];
         rng().fill_bytes(&mut secret_bytes);
-        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
+        let signing_key = SigningKey::from_bytes(&secret_bytes);
         let verifying_key = signing_key.verifying_key();
 
-        self.keys.insert(
-            config.slot,
-            (Ed25519PrivateKey::from(secret_bytes), verifying_key),
-        );
-        Ok(verifying_key.into())
+        self.keys.insert(config.slot, signing_key);
+        Ok(verifying_key)
     }
 }
 
@@ -101,14 +112,44 @@ impl Signer for FakeYubiKey {
             self.verify_pin(pin)?;
         }
 
-        let (signing_key, _) = self
+        debug!(
+            "FakeYubiKey signing with slot {:?}: data_len={} data={}",
+            slot,
+            data.len(),
+            hex::encode(data),
+        );
+
+        let signing_key = self
             .keys
             .get(&slot)
             .ok_or(YkadaError::YubikeyLib(yubikey::Error::GenericError))?;
 
         use ed25519_dalek::Signer;
-        let signature = signing_key.to_signing_key().sign(data);
-        Ok(signature.to_bytes().to_vec())
+        let signature = signing_key.sign(data);
+        let sig_bytes = signature.to_bytes().to_vec();
+
+        debug!("FakeYubiKey signature: {}", hex::encode(&sig_bytes));
+        info!(
+            "FakeYubiKey: signed {} bytes in slot {:?}",
+            data.len(),
+            slot
+        );
+
+        Ok(sig_bytes)
+    }
+}
+
+impl DeviceReader for FakeYubiKey {
+    fn serial(&self) -> u32 {
+        self.serial
+    }
+
+    fn firmware_version(&self) -> (u8, u8, u8) {
+        self.firmware
+    }
+
+    fn read_public_key(&mut self, slot: Slot) -> YkadaResult<Option<VerifyingKey>> {
+        Ok(self.keys.get(&slot).map(|key| key.verifying_key()))
     }
 }
 
@@ -124,27 +165,7 @@ impl DeviceFinder for FakeDeviceFinder {
     }
 }
 
-mod tests {
-    use super::*;
-    use crate::contract_tests_for;
-    use crate::ports::contract_tests::yubikey_contract;
-
-    contract_tests_for!(
-        fake_yubikey_contract,
-        make = || FakeYubiKey::new(Pin::default()),
-        tests = {
-            test_pin_verification_success => yubikey_contract::test_pin_verification_success,
-            test_pin_verification_failure => yubikey_contract::test_pin_verification_failure,
-            test_mgmt_key_authentication_success_default => yubikey_contract::test_mgmt_key_authentication_success_default,
-            test_mgmt_key_authentication_failure => yubikey_contract::test_mgmt_key_authentication_failure,
-            test_import_key_success => yubikey_contract::test_import_key_success,
-            test_import_key_fail_not_authenticated => yubikey_contract::test_import_key_fail_not_authenticated,
-            test_sign_key_not_found => yubikey_contract::test_sign_key_not_found,
-            test_sign_invalid_pin => yubikey_contract::test_sign_invalid_pin,
-            test_sign_success => yubikey_contract::test_sign_success,
-            test_generate_key_not_authenticated => yubikey_contract::test_generate_key_not_authenticated,
-            test_generate_key_success => yubikey_contract::test_generate_key_success,
-            test_import_seed_phrase_derived_key => yubikey_contract::test_import_seed_phrase_derived_key,
-        }
-    );
-}
+run_yubikey_contract_tests!(
+    fake_yubikey_contract,
+    make = || FakeYubiKey::new(Pin::default())
+);

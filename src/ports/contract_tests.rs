@@ -21,16 +21,80 @@ macro_rules! contract_tests_for {
       };
   }
 
+/// Generates a test module that runs all standard YubiKey contract tests against a device
+/// created by `$make`. Adding a new test to `yubikey_contract` automatically includes it
+/// in every caller without any changes at the call site.
+///
+/// Usage: `run_yubikey_contract_tests!(my_mod, make = || MyDevice::new());`
+#[macro_export]
+macro_rules! run_yubikey_contract_tests {
+    ($mod_name:ident, make = $make:expr) => {
+        mod $mod_name {
+            use super::*;
+            use $crate::ports::contract_tests::yubikey_contract;
+
+            #[test]
+            fn test_pin_verification_success() {
+                yubikey_contract::test_pin_verification_success(($make)());
+            }
+            #[test]
+            fn test_pin_verification_failure() {
+                yubikey_contract::test_pin_verification_failure(($make)());
+            }
+            #[test]
+            fn test_mgmt_key_authentication_success_default() {
+                yubikey_contract::test_mgmt_key_authentication_success_default(($make)());
+            }
+            #[test]
+            fn test_mgmt_key_authentication_failure() {
+                yubikey_contract::test_mgmt_key_authentication_failure(($make)());
+            }
+            #[test]
+            fn test_import_key_fail_not_authenticated() {
+                yubikey_contract::test_import_key_fail_not_authenticated(($make)());
+            }
+            #[test]
+            fn test_import_key_success() {
+                yubikey_contract::test_import_key_success(($make)());
+            }
+            #[test]
+            fn test_sign_key_not_found() {
+                yubikey_contract::test_sign_key_not_found(($make)());
+            }
+            #[test]
+            fn test_sign_invalid_pin() {
+                yubikey_contract::test_sign_invalid_pin(($make)());
+            }
+            #[test]
+            fn test_sign_success() {
+                yubikey_contract::test_sign_success(($make)());
+            }
+            #[test]
+            fn test_generate_key_not_authenticated() {
+                yubikey_contract::test_generate_key_not_authenticated(($make)());
+            }
+            #[test]
+            fn test_generate_key_success() {
+                yubikey_contract::test_generate_key_success(($make)());
+            }
+            #[test]
+            fn test_import_seed_phrase_derived_key() {
+                yubikey_contract::test_import_seed_phrase_derived_key(($make)());
+            }
+        }
+    };
+}
+
 #[cfg(test)]
 pub mod yubikey_contract {
-    use ed25519_dalek::{SecretKey, SigningKey};
+    use ed25519_dalek::{SigningKey, VerifyingKey};
 
     use std::str::FromStr;
 
     use crate::{
         model::{Algorithm, ManagementKey, Pin, Slot, TouchPolicy},
         ports::{KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer},
-        CardanoKey, DerivationPath, Ed25519PrivateKey, SeedPhrase, YkadaError,
+        CardanoKey, DerivationPath, SeedPhrase, YkadaError,
     };
 
     const TESTING_MANAGEMENT_KEY: ManagementKey = ManagementKey::new([
@@ -77,10 +141,11 @@ pub mod yubikey_contract {
     }
 
     pub(crate) fn test_import_key_fail_not_authenticated(mut device: impl KeyManager) {
-        let secret_key = Ed25519PrivateKey::from([0u8; 32]);
+        let signing_key = SigningKey::from_bytes(&[0u8; 32]);
+        let vk: VerifyingKey = signing_key.verifying_key();
         let config = KeyConfig::default();
 
-        let result = device.import_key(secret_key, config.clone());
+        let result = device.import_key(signing_key, vk, config.clone());
         let error = result.unwrap_err();
 
         assert!(
@@ -98,10 +163,11 @@ pub mod yubikey_contract {
             .authenticate(Some(&TESTING_MANAGEMENT_KEY))
             .expect("Authentication failed");
 
-        let secret_key = Ed25519PrivateKey::from([0u8; 32]);
+        let signing_key = SigningKey::from_bytes(&[0u8; 32]);
+        let vk: VerifyingKey = signing_key.verifying_key();
         let config = KeyConfig::default();
 
-        let result = device.import_key(secret_key, config.clone());
+        let result = device.import_key(signing_key, vk, config.clone());
 
         assert!(result.is_ok(), "error: {:?}", result.err());
     }
@@ -140,17 +206,15 @@ pub mod yubikey_contract {
             .authenticate(Some(&TESTING_MANAGEMENT_KEY))
             .expect("Authentication failed");
 
-        let secret_bytes = [0u8; 32];
-        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
+        let signing_key = SigningKey::from_bytes(&[0u8; 32]);
         let verifying_key = signing_key.verifying_key();
-        let secret_key = Ed25519PrivateKey::from(*signing_key.as_bytes());
 
         let config = KeyConfig {
             touch_policy: TouchPolicy::Never,
             ..Default::default()
         };
 
-        let result = device.import_key(secret_key, config.clone());
+        let result = device.import_key(signing_key, verifying_key, config.clone());
 
         assert!(result.is_ok(), "error: {:?}", result.err());
 
@@ -199,7 +263,7 @@ pub mod yubikey_contract {
         let result = device.generate_key(config.clone());
 
         assert!(result.is_ok(), "error: {:?}", result.err());
-        let verifying_key = result.unwrap().to_verifying_key();
+        let verifying_key = result.unwrap();
         assert_eq!(verifying_key.as_bytes().len(), 32);
 
         let pin = Pin::default();
@@ -236,6 +300,7 @@ pub mod yubikey_contract {
         let child_key = root_key.derive(&path);
 
         let private_key = child_key.private_key();
+        let cardano_vk = child_key.public_key();
 
         let config = KeyConfig {
             slot: crate::model::Slot::KeyManagement,
@@ -243,7 +308,7 @@ pub mod yubikey_contract {
         };
 
         device
-            .import_key(private_key, config)
+            .import_key(private_key, cardano_vk, config)
             .expect("Failed to import key");
     }
 }

@@ -25,7 +25,7 @@ where
 
     device.authenticate(mgmt_key)?;
 
-    device.import_key(secret_key.into(), config)?;
+    device.import_key(secret_key.into(), signing_key.verifying_key(), config)?;
 
     debug!("Loaded private key to YubiKey");
 

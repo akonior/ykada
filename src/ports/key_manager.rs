@@ -1,6 +1,6 @@
 use crate::error::YkadaResult;
 use crate::model::{PinPolicy, Slot, TouchPolicy};
-use crate::{Ed25519PrivateKey, Ed25519PublicKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyConfig {
@@ -20,7 +20,15 @@ impl Default for KeyConfig {
 }
 
 pub trait KeyManager {
-    fn import_key(&mut self, key: Ed25519PrivateKey, config: KeyConfig) -> YkadaResult<()>;
+    /// Import a private key into the device.
+    /// `vk` is the Cardano verifying key (`kL * G`) associated with `key`;
+    /// the adapter stores it so it can be retrieved later by `DeviceReader::read_public_key`.
+    fn import_key(
+        &mut self,
+        key: SigningKey,
+        vk: VerifyingKey,
+        config: KeyConfig,
+    ) -> YkadaResult<()>;
 
-    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<Ed25519PublicKey>;
+    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<VerifyingKey>;
 }

@@ -1,13 +1,10 @@
 use ed25519_bip32::{DerivationScheme, XPrv};
-use ed25519_dalek::SecretKey;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use pbkdf2::pbkdf2_hmac;
 use sha2::Sha512;
 use thiserror::Error;
 
-use crate::{
-    model::{DerivationPath, Ed25519PublicKey, SeedPhrase},
-    Ed25519PrivateKey,
-};
+use crate::model::{DerivationPath, SeedPhrase};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CardanoKey(XPrv);
@@ -31,38 +28,22 @@ impl CardanoKey {
     }
 
     pub fn derive(&self, path: &DerivationPath) -> Self {
-        let indices = path.indices();
-        let derived_key = indices.iter().fold(self.0.clone(), |key, &index| {
+        let derived_key = path.indices().iter().fold(self.0.clone(), |key, &index| {
             key.derive(DerivationScheme::V2, index)
         });
         CardanoKey(derived_key)
     }
 
-    pub fn public_key(&self) -> Ed25519PublicKey {
-        let xpub = self.0.public();
-        let pub_bytes = xpub.public_key_bytes();
-        Ed25519PublicKey::from_slice(pub_bytes)
-            .expect("XPub public_key_bytes() always returns 32 bytes")
+    pub fn public_key(&self) -> VerifyingKey {
+        let arr: [u8; 32] = *self.0.public().public_key_bytes();
+        VerifyingKey::from_bytes(&arr).expect("XPub public_key_bytes() is a valid Ed25519 point")
     }
 
-    pub fn to_secret_key(&self) -> SecretKey {
+    pub fn private_key(&self) -> SigningKey {
         let extended_secret = self.0.extended_secret_key_bytes();
         let mut k_l = [0u8; 32];
         k_l.copy_from_slice(&extended_secret[..32]);
-        k_l
-    }
-
-    pub fn private_key(&self) -> Ed25519PrivateKey {
-        let extended_secret = self.0.extended_secret_key_bytes();
-        let mut k_l = [0u8; 32];
-        k_l.copy_from_slice(&extended_secret[..32]);
-        Ed25519PrivateKey::from(k_l)
-    }
-
-    pub fn verifying_key(&self) -> ed25519_dalek::VerifyingKey {
-        let pub_key = self.public_key();
-        ed25519_dalek::VerifyingKey::from_bytes(pub_key.as_array())
-            .expect("CardanoKey public key is valid Ed25519")
+        SigningKey::from_bytes(&k_l)
     }
 }
 
@@ -111,36 +92,24 @@ mod tests {
     fn test_derive_payment_key() {
         let seed = SeedPhrase::try_from(CIP3_MNEMONIC).unwrap();
         let root = CardanoKey::from_seed_phrase(&seed, "").unwrap();
-
-        let path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
-        let payment_key = root.derive(&path);
-
-        let pub_key = payment_key.public_key();
-        assert_eq!(pub_key.as_bytes().len(), 32);
+        let payment_key = root.derive(&DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap());
+        assert_eq!(payment_key.public_key().as_bytes().len(), 32);
     }
 
     #[test]
     fn test_derive_staking_key() {
         let seed = SeedPhrase::try_from(CIP3_MNEMONIC).unwrap();
         let root = CardanoKey::from_seed_phrase(&seed, "").unwrap();
-
-        let path = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
-        let staking_key = root.derive(&path);
-
-        let pub_key = staking_key.public_key();
-        assert_eq!(pub_key.as_bytes().len(), 32);
+        let staking_key = root.derive(&DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap());
+        assert_eq!(staking_key.public_key().as_bytes().len(), 32);
     }
 
     #[test]
     fn test_derive_change_key() {
         let seed = SeedPhrase::try_from(CIP3_MNEMONIC).unwrap();
         let root = CardanoKey::from_seed_phrase(&seed, "").unwrap();
-
-        let path = DerivationPath::try_from("m/1852'/1815'/0'/1/0").unwrap();
-        let change_key = root.derive(&path);
-
-        let pub_key = change_key.public_key();
-        assert_eq!(pub_key.as_bytes().len(), 32);
+        let change_key = root.derive(&DerivationPath::try_from("m/1852'/1815'/0'/1/0").unwrap());
+        assert_eq!(change_key.public_key().as_bytes().len(), 32);
     }
 
     #[test]
@@ -148,21 +117,13 @@ mod tests {
         let seed = SeedPhrase::try_from(CIP3_MNEMONIC).unwrap();
         let root = CardanoKey::from_seed_phrase(&seed, "").unwrap();
 
-        let path0 = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
-        let path1 = DerivationPath::try_from("m/1852'/1815'/0'/0/1").unwrap();
-        let path2 = DerivationPath::try_from("m/1852'/1815'/0'/0/2").unwrap();
+        let key0 = root.derive(&DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap());
+        let key1 = root.derive(&DerivationPath::try_from("m/1852'/1815'/0'/0/1").unwrap());
+        let key2 = root.derive(&DerivationPath::try_from("m/1852'/1815'/0'/0/2").unwrap());
 
-        let key0 = root.derive(&path0);
-        let key1 = root.derive(&path1);
-        let key2 = root.derive(&path2);
-
-        let pub0 = key0.public_key();
-        let pub1 = key1.public_key();
-        let pub2 = key2.public_key();
-
-        assert_ne!(pub0.as_bytes(), pub1.as_bytes());
-        assert_ne!(pub1.as_bytes(), pub2.as_bytes());
-        assert_ne!(pub0.as_bytes(), pub2.as_bytes());
+        assert_ne!(key0.public_key().as_bytes(), key1.public_key().as_bytes());
+        assert_ne!(key1.public_key().as_bytes(), key2.public_key().as_bytes());
+        assert_ne!(key0.public_key().as_bytes(), key2.public_key().as_bytes());
     }
 
     #[test]
@@ -175,9 +136,7 @@ mod tests {
 
         let pub_key = root.public_key();
         assert_eq!(pub_key.as_bytes().len(), 32);
-
-        let pub_key2 = root.public_key();
-        assert_eq!(pub_key.as_bytes(), pub_key2.as_bytes());
+        assert_eq!(pub_key.as_bytes(), root.public_key().as_bytes());
     }
 
     #[test]
@@ -190,12 +149,10 @@ mod tests {
         let root = CardanoKey::from_seed_phrase(&seed, "").unwrap();
         test_public_key_consistency(&root, "root key");
 
-        let path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
-        let derived = root.derive(&path);
+        let derived = root.derive(&DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap());
         test_public_key_consistency(&derived, "derived key");
 
-        let path2 = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
-        let staking_key = root.derive(&path2);
+        let staking_key = root.derive(&DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap());
         test_public_key_consistency(&staking_key, "staking key");
 
         let root_with_passphrase = CardanoKey::from_seed_phrase(&seed, "foo").unwrap();
@@ -203,15 +160,12 @@ mod tests {
     }
 
     fn test_public_key_consistency(cardano_key: &CardanoKey, context: &str) {
-        let xpub_key = cardano_key.public_key();
-        let xpub_bytes = xpub_key.as_bytes();
-
-        let piv_key = cardano_key.to_secret_key();
+        let xpub_bytes = cardano_key.public_key();
         let extended_secret = cardano_key.0.extended_secret_key_bytes();
         let chain_code = cardano_key.0.chain_code();
 
         let mut reconstructed_extended = [0u8; 64];
-        reconstructed_extended[..32].copy_from_slice(&piv_key);
+        reconstructed_extended[..32].copy_from_slice(&extended_secret[..32]);
         reconstructed_extended[32..].copy_from_slice(&extended_secret[32..64]);
 
         let reconstructed_xprv =
@@ -219,11 +173,11 @@ mod tests {
         let reconstructed_xpub = reconstructed_xprv.public();
 
         assert_eq!(
-            xpub_bytes,
+            xpub_bytes.as_bytes(),
             reconstructed_xpub.public_key_bytes().as_slice(),
             "Public key mismatch for {}: XPub = {}, Reconstructed = {}",
             context,
-            hex::encode(xpub_bytes),
+            hex::encode(xpub_bytes.as_bytes()),
             hex::encode(reconstructed_xpub.public_key_bytes())
         );
     }

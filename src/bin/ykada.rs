@@ -5,7 +5,10 @@ use std::io::{self, Read, Write};
 use tracing::error;
 
 use ykada::{
-    api::{Bech32Encodable, PinPolicy, Slot, TouchPolicy},
+    api::{
+        Bech32Encodable, Network, Pin, PinPolicy, SeedPhrase, Slot, StakeVerifyingKey, TouchPolicy,
+        WalletConfig,
+    },
     DerPrivateKey,
 };
 
@@ -22,8 +25,30 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    #[command(about = "Import a private key into the YubiKey")]
-    ImportKey {
+    #[command(about = "Import a wallet from a BIP39 seed phrase into the YubiKey")]
+    Import {
+        #[arg(long)]
+        seed: String,
+        #[arg(long, default_value = "signature")]
+        payment_slot: SlotArg,
+        #[arg(long, default_value = "key-management")]
+        stake_slot: SlotArg,
+        #[arg(long, default_value = "always")]
+        pin_policy: PinPolicyArg,
+        #[arg(long, default_value = "always")]
+        touch_policy: TouchPolicyArg,
+        #[arg(long)]
+        mgmt_key: Option<String>,
+        #[arg(long, default_value = "preview")]
+        network: NetworkArg,
+    },
+
+    #[command(
+        name = "import-key-legacy",
+        hide = true,
+        about = "Import a private key into the YubiKey (legacy)"
+    )]
+    ImportKeyLegacy {
         #[command(flatten)]
         key_options: KeyOptions,
         #[arg(long)]
@@ -37,14 +62,108 @@ pub enum Commands {
     #[command(about = "Sign data using the YubiKey")]
     Sign,
 
-    #[command(about = "Generate a new key in the YubiKey")]
+    #[command(about = "Generate a new wallet: seed, two keys on YubiKey, Cardano address")]
     Generate {
+        #[arg(long)]
+        seed: Option<String>,
+        #[arg(long, default_value = "signature")]
+        payment_slot: SlotArg,
+        #[arg(long, default_value = "key-management")]
+        stake_slot: SlotArg,
+        #[arg(long, default_value = "always")]
+        pin_policy: PinPolicyArg,
+        #[arg(long, default_value = "always")]
+        touch_policy: TouchPolicyArg,
+        #[arg(long)]
+        mgmt_key: Option<String>,
+        #[arg(long, default_value = "preview")]
+        network: NetworkArg,
+    },
+
+    #[command(
+        name = "generate-legacy",
+        hide = true,
+        about = "Generate a new key in the YubiKey (legacy hardware-only)"
+    )]
+    GenerateLegacy {
         #[command(flatten)]
         key_options: KeyOptions,
     },
 
-    #[command(hide = true)]
-    Info,
+    #[command(about = "Show connected YubiKey info and wallet address")]
+    Info {
+        #[arg(long, default_value = "signature")]
+        payment_slot: SlotArg,
+        #[arg(long, default_value = "key-management")]
+        stake_slot: SlotArg,
+        #[arg(long, default_value = "preview")]
+        network: NetworkArg,
+    },
+
+    #[command(
+        about = "Show on-chain ADA and token balance for the wallet address on the connected YubiKey"
+    )]
+    Balance {
+        #[arg(long, default_value = "signature")]
+        payment_slot: SlotArg,
+        #[arg(long, default_value = "key-management")]
+        stake_slot: SlotArg,
+        #[arg(long, default_value = "preview")]
+        network: NetworkArg,
+    },
+
+    #[command(about = "Sign a pre-built transaction from a file (e.g. Eternl export)")]
+    SignTx {
+        /// Path to the unsigned transaction JSON file (must contain a "cborHex" field)
+        #[arg(long)]
+        tx_file: String,
+        /// Sign and submit to the network (outputs tx hash instead of signed CBOR)
+        #[arg(long)]
+        send: bool,
+        #[arg(long, default_value = "signature")]
+        payment_slot: SlotArg,
+        #[arg(long, default_value = "key-management")]
+        stake_slot: SlotArg,
+        #[arg(long, default_value = "preview")]
+        network: NetworkArg,
+        /// YubiKey PIN (required if the key slot uses PIN-on-sign policy)
+        #[arg(long)]
+        pin: Option<String>,
+    },
+
+    #[command(
+        about = "Build an ADA transfer transaction",
+        long_about = "Build an ADA transfer transaction.\n\n\
+            By default outputs unsigned CBOR hex.\n\
+            Use --sign to sign via YubiKey and output signed CBOR hex.\n\
+            Use --send to sign via YubiKey and submit to the network, printing the tx hash."
+    )]
+    BuildTx {
+        /// Recipient bech32 address
+        #[arg(long)]
+        to: String,
+        /// Amount to send in lovelace (1 ADA = 1_000_000 lovelace)
+        #[arg(long)]
+        lovelace: u64,
+        /// Transaction fee in lovelace
+        #[arg(long, default_value = "200000")]
+        fee: u64,
+        #[arg(long, default_value = "signature")]
+        payment_slot: SlotArg,
+        #[arg(long, default_value = "key-management")]
+        stake_slot: SlotArg,
+        #[arg(long, default_value = "preview")]
+        network: NetworkArg,
+        /// Sign the transaction with the YubiKey and output signed CBOR hex (without submitting)
+        #[arg(long, conflicts_with = "send")]
+        sign: bool,
+        /// Sign the transaction with the YubiKey and submit it to the network (outputs tx hash)
+        #[arg(long, conflicts_with = "sign")]
+        send: bool,
+        /// YubiKey PIN (required if the key slot uses PIN-on-sign policy)
+        #[arg(long)]
+        pin: Option<String>,
+    },
 }
 
 #[derive(clap::Args, Debug)]
@@ -115,6 +234,23 @@ impl From<TouchPolicyArg> for TouchPolicy {
     }
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum NetworkArg {
+    Mainnet,
+    Preprod,
+    Preview,
+}
+
+impl From<NetworkArg> for Network {
+    fn from(arg: NetworkArg) -> Self {
+        match arg {
+            NetworkArg::Mainnet => Network::Mainnet,
+            NetworkArg::Preprod => Network::Preprod,
+            NetworkArg::Preview => Network::Preview,
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
@@ -126,7 +262,39 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     match cli.command {
-        Commands::ImportKey {
+        Commands::Import {
+            seed,
+            payment_slot,
+            stake_slot,
+            pin_policy,
+            touch_policy,
+            mgmt_key,
+            network,
+        } => {
+            let config = WalletConfig {
+                payment_slot: payment_slot.into(),
+                stake_slot: stake_slot.into(),
+                pin_policy: pin_policy.into(),
+                touch_policy: touch_policy.into(),
+                network: network.into(),
+            };
+            let mgmt_key_opt = mgmt_key.map(|s| s.try_into()).transpose()?;
+            let seed_phrase = SeedPhrase::try_from(seed.as_str()).context("invalid seed phrase")?;
+            let wallet = ykada::import_wallet(seed_phrase, config, mgmt_key_opt.as_ref())
+                .context("failed to import wallet from seed phrase")?;
+            println!("Mnemonic (store safely): {}", wallet.mnemonic.phrase());
+            println!(
+                "Payment verifying key:   {}",
+                wallet.payment_vk.to_bech32()?
+            );
+            println!(
+                "Stake verifying key:     {}",
+                StakeVerifyingKey(wallet.stake_vk).to_bech32()?
+            );
+            println!("Cardano address:         {}", wallet.address.to_bech32()?);
+        }
+
+        Commands::ImportKeyLegacy {
             key_options,
             seed,
             passphrase,
@@ -169,7 +337,44 @@ fn main() -> anyhow::Result<()> {
             let signature = ykada::sign_bin_data(&data);
             std::io::stdout().write_all(&signature)?;
         }
-        Commands::Generate { key_options } => {
+        Commands::Generate {
+            seed,
+            payment_slot,
+            stake_slot,
+            pin_policy,
+            touch_policy,
+            mgmt_key,
+            network,
+        } => {
+            let config = WalletConfig {
+                payment_slot: payment_slot.into(),
+                stake_slot: stake_slot.into(),
+                pin_policy: pin_policy.into(),
+                touch_policy: touch_policy.into(),
+                network: network.into(),
+            };
+            let mgmt_key_opt = mgmt_key.map(|s| s.try_into()).transpose()?;
+            let wallet = match seed {
+                Some(phrase) => {
+                    let seed_phrase =
+                        SeedPhrase::try_from(phrase.as_str()).context("invalid seed phrase")?;
+                    ykada::import_wallet(seed_phrase, config, mgmt_key_opt.as_ref())?
+                }
+                None => ykada::generate_wallet(config, mgmt_key_opt.as_ref())?,
+            };
+            println!("Mnemonic (store safely): {}", wallet.mnemonic.phrase());
+            println!(
+                "Payment verifying key:   {}",
+                wallet.payment_vk.to_bech32()?
+            );
+            println!(
+                "Stake verifying key:     {}",
+                StakeVerifyingKey(wallet.stake_vk).to_bech32()?
+            );
+            println!("Cardano address:         {}", wallet.address.to_bech32()?);
+        }
+
+        Commands::GenerateLegacy { key_options } => {
             let config = ykada::ports::KeyConfig {
                 slot: key_options.slot.into(),
                 pin_policy: key_options.pin_policy.into(),
@@ -188,8 +393,148 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Commands::Info => {
-            error!("Not implemented");
+
+        Commands::Info {
+            payment_slot,
+            stake_slot,
+            network,
+        } => {
+            let info =
+                ykada::api::wallet_info(payment_slot.into(), stake_slot.into(), network.into())
+                    .context("failed to read device info")?;
+
+            let (major, minor, patch) = info.firmware;
+            println!("YubiKey serial:          {}", info.serial);
+            println!("Firmware version:        {}.{}.{}", major, minor, patch);
+
+            match info.payment_vk {
+                Some(vk) => println!("Payment verifying key:   {}", vk.to_bech32()?),
+                None => println!("Payment verifying key:   (none)"),
+            }
+            match info.stake_vk {
+                Some(vk) => println!(
+                    "Stake verifying key:     {}",
+                    StakeVerifyingKey(vk).to_bech32()?
+                ),
+                None => println!("Stake verifying key:     (none)"),
+            }
+            if let Some(addr) = info.address {
+                println!("Cardano address:         {}", addr.to_bech32()?)
+            }
+        }
+
+        Commands::Balance {
+            payment_slot,
+            stake_slot,
+            network,
+        } => {
+            let info =
+                ykada::api::wallet_info(payment_slot.into(), stake_slot.into(), network.into())
+                    .context("failed to read device info")?;
+
+            let addr = info.address.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No Cardano address found on this YubiKey — import or generate a wallet first"
+                )
+            })?;
+
+            let balance = ykada::api::fetch_balance(&addr, network.into())
+                .context("failed to fetch balance")?;
+
+            println!("Cardano address:  {}", addr.to_bech32()?);
+            println!("Account balance:");
+            println!("  ADA:            {:.6}", balance.ada());
+            for token in &balance.tokens {
+                println!(
+                    "  {}/{}  ×  {}",
+                    token.policy_id, token.asset_name, token.quantity
+                );
+            }
+        }
+
+        Commands::SignTx {
+            tx_file,
+            send,
+            payment_slot,
+            stake_slot,
+            network,
+            pin,
+        } => {
+            let content = std::fs::read_to_string(&tx_file)
+                .with_context(|| format!("failed to read transaction file: {tx_file}"))?;
+            let pin = pin.map(|p| p.parse::<Pin>()).transpose()?;
+            if send {
+                let tx_hash = ykada::api::sign_and_send_external_tx(
+                    &content,
+                    payment_slot.into(),
+                    stake_slot.into(),
+                    network.into(),
+                    pin,
+                )
+                .context("failed to sign and submit transaction")?;
+                println!("{tx_hash}");
+            } else {
+                let cbor = ykada::api::sign_external_tx(
+                    &content,
+                    payment_slot.into(),
+                    stake_slot.into(),
+                    network.into(),
+                    pin,
+                )
+                .context("failed to sign transaction")?;
+                println!("{}", hex::encode(&cbor));
+            }
+        }
+
+        Commands::BuildTx {
+            to,
+            lovelace,
+            fee,
+            payment_slot,
+            stake_slot,
+            network,
+            sign,
+            send,
+            pin,
+        } => {
+            if send {
+                let pin = pin.map(|p| p.parse::<Pin>()).transpose()?;
+                let tx_hash = ykada::api::send_transaction(
+                    payment_slot.into(),
+                    stake_slot.into(),
+                    network.into(),
+                    &to,
+                    lovelace,
+                    fee,
+                    pin,
+                )
+                .context("failed to sign and submit transaction")?;
+                println!("{tx_hash}");
+            } else if sign {
+                let pin = pin.map(|p| p.parse::<Pin>()).transpose()?;
+                let cbor = ykada::api::sign_transaction(
+                    payment_slot.into(),
+                    stake_slot.into(),
+                    network.into(),
+                    &to,
+                    lovelace,
+                    fee,
+                    pin,
+                )
+                .context("failed to sign transaction")?;
+                println!("{}", hex::encode(&cbor));
+            } else {
+                let cbor = ykada::api::build_transaction(
+                    payment_slot.into(),
+                    stake_slot.into(),
+                    network.into(),
+                    &to,
+                    lovelace,
+                    fee,
+                )
+                .context("failed to build transaction")?;
+                println!("{}", hex::encode(&cbor));
+            }
         }
     }
 
@@ -212,7 +557,7 @@ mod tests {
     fn test_cli_generate() {
         let mut cmd = Command::cargo_bin("ykada").unwrap();
         let result = cmd
-            .arg("generate")
+            .arg("generate-legacy")
             .arg("--mgmt-key")
             .arg("010203040506070801020304050607080102030405060709")
             .assert();

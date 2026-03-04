@@ -32,6 +32,19 @@ impl Bech32Encodable for SigningKey {
     }
 }
 
+pub struct StakeVerifyingKey(pub VerifyingKey);
+
+impl Bech32Encodable for StakeVerifyingKey {
+    fn to_bech32(&self) -> Result<String, Bech32Error> {
+        bech32::encode(
+            "stake_vk",
+            self.0.as_bytes().to_base32(),
+            bech32::Variant::Bech32,
+        )
+        .map_err(Bech32Error::from)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,5 +107,33 @@ mod tests {
         let decoded_bytes: Vec<u8> = Vec::from_base32(&data).unwrap();
         assert_eq!(decoded_bytes.len(), 32);
         assert_eq!(decoded_bytes.as_slice(), signing_key.as_bytes());
+    }
+
+    #[test]
+    fn test_stake_verifying_key_bech32_prefix() {
+        let mut secret_bytes = [0u8; 32];
+        secret_bytes[0] = 1;
+        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
+        let verifying_key = signing_key.verifying_key();
+
+        let encoded = StakeVerifyingKey(verifying_key).to_bech32().unwrap();
+        assert!(encoded.starts_with("stake_vk"), "got: {}", encoded);
+    }
+
+    #[test]
+    fn test_stake_verifying_key_round_trip() {
+        let mut secret_bytes = [0u8; 32];
+        secret_bytes[0] = 1;
+        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
+        let verifying_key = signing_key.verifying_key();
+
+        let encoded = StakeVerifyingKey(verifying_key).to_bech32().unwrap();
+        let (hrp, data, variant) = bech32::decode(&encoded).unwrap();
+        assert_eq!(hrp, "stake_vk");
+        assert_eq!(variant, bech32::Variant::Bech32);
+
+        let decoded_bytes: Vec<u8> = Vec::from_base32(&data).unwrap();
+        assert_eq!(decoded_bytes.len(), 32);
+        assert_eq!(decoded_bytes.as_slice(), verifying_key.as_bytes());
     }
 }

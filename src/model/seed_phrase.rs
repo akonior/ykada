@@ -24,6 +24,19 @@ impl SeedPhrase {
     pub fn entropy(&self) -> Vec<u8> {
         self.0.to_entropy()
     }
+
+    // Not pure — uses OS entropy. Call only from the shell layer (api.rs).
+    pub fn generate() -> Result<Self, SeedPhraseError> {
+        use rand::RngCore;
+        let mut entropy = [0u8; 32];
+        rand::rng().fill_bytes(&mut entropy);
+        let mnemonic = Mnemonic::from_entropy_in(Language::English, &entropy)?;
+        Ok(SeedPhrase(mnemonic))
+    }
+
+    pub fn phrase(&self) -> String {
+        self.0.to_string()
+    }
 }
 
 #[cfg(test)]
