@@ -1,15 +1,11 @@
 use anyhow::Context;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use clap_verbosity_flag::{Verbosity, WarnLevel};
-use std::io::{self, Read, Write};
 use tracing::info;
 
-use ykada::{
-    api::{
-        Bech32Encodable, Network, Pin, PinPolicy, SeedPhrase, SendMode, SendOutcome, Slot,
-        StakeVerifyingKey, TouchPolicy, WalletConfig,
-    },
-    DerPrivateKey,
+use ykada::api::{
+    Bech32Encodable, Network, Pin, PinPolicy, SeedPhrase, SendMode, SendOutcome, Slot,
+    StakeVerifyingKey, TouchPolicy, WalletConfig,
 };
 
 #[derive(Parser, Debug)]
@@ -44,25 +40,6 @@ pub enum Commands {
         network: NetworkArg,
     },
 
-    #[command(
-        name = "import-key-legacy",
-        hide = true,
-        about = "Import a private key into the YubiKey (legacy)"
-    )]
-    ImportKeyLegacy {
-        #[command(flatten)]
-        key_options: KeyOptions,
-        #[arg(long)]
-        seed: Option<String>,
-        #[arg(long, default_value = "")]
-        passphrase: String,
-        #[arg(long)]
-        path: Option<String>,
-    },
-
-    #[command(about = "Sign data using the YubiKey")]
-    Sign,
-
     #[command(about = "Generate a new wallet: seed, two keys on YubiKey, Cardano address")]
     Generate {
         #[arg(long)]
@@ -79,16 +56,6 @@ pub enum Commands {
         mgmt_key: Option<String>,
         #[arg(long, default_value = "preview")]
         network: NetworkArg,
-    },
-
-    #[command(
-        name = "generate-legacy",
-        hide = true,
-        about = "Generate a new key in the YubiKey (legacy hardware-only)"
-    )]
-    GenerateLegacy {
-        #[command(flatten)]
-        key_options: KeyOptions,
     },
 
     #[command(about = "Show connected YubiKey info and wallet address")]
@@ -316,49 +283,6 @@ fn run(command: Commands) -> anyhow::Result<()> {
             println!("Cardano address:         {}", wallet.address.to_bech32()?);
         }
 
-        Commands::ImportKeyLegacy {
-            key_options,
-            seed,
-            passphrase,
-            path,
-        } => {
-            let config = ykada::ports::KeyConfig {
-                slot: key_options.slot.into(),
-                pin_policy: key_options.pin_policy.into(),
-                touch_policy: key_options.touch_policy.into(),
-            };
-
-            let mgmt_key_opt = key_options.mgmt_key.map(|s| s.try_into()).transpose()?;
-
-            if let Some(seed_phrase) = seed {
-                let verifying_key = ykada::import_private_key_from_seed_phrase(
-                    &seed_phrase,
-                    &passphrase,
-                    path.as_deref(),
-                    config,
-                    mgmt_key_opt.as_ref(),
-                )
-                .context("failed to import key from seed phrase")?;
-
-                println!("Imported verifying key: {}", verifying_key.to_bech32()?);
-            } else {
-                let mut buf = Vec::new();
-                io::stdin().read_to_end(&mut buf)?;
-                let der_key = DerPrivateKey(buf);
-                let verifying_key =
-                    ykada::import_private_key_in_der_format(der_key, config, mgmt_key_opt.as_ref())
-                        .context("failed to load DER private key into YubiKey")?;
-
-                println!("Imported verifying key: {}", verifying_key.to_bech32()?);
-            }
-        }
-
-        Commands::Sign => {
-            let mut data = Vec::new();
-            io::stdin().read_to_end(&mut data)?;
-            let signature = ykada::sign_bin_data(&data);
-            std::io::stdout().write_all(&signature)?;
-        }
         Commands::Generate {
             seed,
             payment_slot,
@@ -391,17 +315,6 @@ fn run(command: Commands) -> anyhow::Result<()> {
                 StakeVerifyingKey(wallet.stake_vk).to_bech32()?
             );
             println!("Cardano address:         {}", wallet.address.to_bech32()?);
-        }
-
-        Commands::GenerateLegacy { key_options } => {
-            let config = ykada::ports::KeyConfig {
-                slot: key_options.slot.into(),
-                pin_policy: key_options.pin_policy.into(),
-                touch_policy: key_options.touch_policy.into(),
-            };
-            let mgmt_key_opt = key_options.mgmt_key.map(|s| s.try_into()).transpose()?;
-            let verifying_key = ykada::generate_key_with_config(config, mgmt_key_opt.as_ref())?;
-            println!("Generated verifying key: {}", verifying_key.to_bech32()?);
         }
 
         Commands::Info {
