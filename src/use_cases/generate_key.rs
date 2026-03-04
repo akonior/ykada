@@ -72,7 +72,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            YkadaError::YubikeyLib(yubikey::Error::AuthenticationError)
+            YkadaError::AuthenticationFailed { .. }
         ));
     }
 }

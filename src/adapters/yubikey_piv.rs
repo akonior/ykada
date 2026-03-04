@@ -70,7 +70,12 @@ impl ManagementKeyVerifier for PivYubiKey {
             MgmKey::get_default(&self.device)?
         };
 
-        self.device.authenticate(&mgm_key)?;
+        self.device.authenticate(&mgm_key).map_err(|e| match e {
+            yubikey::Error::AuthenticationError => YkadaError::AuthenticationFailed {
+                reason: "wrong management key".into(),
+            },
+            other => YkadaError::YubikeyLib(other),
+        })?;
 
         self.authenticated = true;
         debug!("YubiKey authenticated with management key");

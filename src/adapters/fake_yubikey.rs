@@ -57,7 +57,9 @@ impl ManagementKeyVerifier for FakeYubiKey {
             self.authenticated = true;
             Ok(())
         } else {
-            Err(YkadaError::YubikeyLib(yubikey::Error::AuthenticationError))
+            Err(YkadaError::AuthenticationFailed {
+                reason: "wrong management key".into(),
+            })
         }
     }
 }

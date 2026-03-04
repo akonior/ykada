@@ -15,12 +15,13 @@ use ykada::{
 #[derive(Parser, Debug)]
 #[command(name = "ykada")]
 #[command(about = "YubiKey Cardano wallet", version)]
+#[command(subcommand_required = false, arg_required_else_help = false)]
 pub struct Cli {
     #[command(flatten)]
     pub verbosity: Verbosity<WarnLevel>,
 
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -263,6 +264,17 @@ fn print_error(e: &anyhow::Error) {
     }
 }
 
+fn print_banner() {
+    use std::io::IsTerminal;
+    if !std::io::stdout().is_terminal() {
+        return;
+    }
+    println!("\x1b[1;32m  ╻ ╻╻┏ ┏━┓╺┳┓┏━┓\x1b[0m");
+    println!("\x1b[1;32m  ┗┳┛┣┻┓┣━┫ ┃┃┣━┫\x1b[0m");
+    println!("\x1b[1;32m   ╹ ╹ ╹╹ ╹╺┻┛╹ ╹\x1b[0m  \x1b[1;37mYubiKey Cardano Wallet\x1b[0m");
+    println!();
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -273,7 +285,12 @@ fn main() {
         .with_level(true)
         .init();
 
-    if let Err(e) = run(cli.command) {
+    let command = cli.command.unwrap_or(Commands::Info {
+        payment_slot: SlotArg::Signature,
+        stake_slot: SlotArg::KeyManagement,
+        network: NetworkArg::Preview,
+    });
+    if let Err(e) = run(command) {
         print_error(&e);
         std::process::exit(1);
     }
@@ -408,12 +425,13 @@ fn run(command: Commands) -> anyhow::Result<()> {
             stake_slot,
             network,
         } => {
+            print_banner();
             let info =
                 ykada::api::wallet_info(payment_slot.into(), stake_slot.into(), network.into())?;
 
             let (major, minor, patch) = info.firmware;
-            println!("YubiKey serial:          {}", info.serial);
-            println!("Firmware version:        {}.{}.{}", major, minor, patch);
+            info!("YubiKey serial:          {}", info.serial);
+            info!("Firmware version:        {}.{}.{}", major, minor, patch);
 
             match info.payment_vk {
                 Some(vk) => info!("Payment verifying key:   {}", vk.to_bech32()?),
