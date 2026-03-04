@@ -1,6 +1,7 @@
 use crate::error::YkadaResult;
 use crate::model::{PinPolicy, Slot, TouchPolicy};
-use crate::{Ed25519PrivateKey, Ed25519PublicKey};
+use crate::Ed25519PrivateKey;
+use ed25519_dalek::VerifyingKey;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyConfig {
@@ -26,9 +27,9 @@ pub trait KeyManager {
     fn import_key(
         &mut self,
         key: Ed25519PrivateKey,
-        vk: Ed25519PublicKey,
+        vk: VerifyingKey,
         config: KeyConfig,
     ) -> YkadaResult<()>;
 
-    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<Ed25519PublicKey>;
+    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<VerifyingKey>;
 }

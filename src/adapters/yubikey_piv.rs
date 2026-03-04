@@ -3,7 +3,7 @@ use crate::model::{Algorithm, ManagementKey, Pin, Slot};
 use crate::ports::{
     DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
-use crate::{Ed25519PrivateKey, Ed25519PublicKey};
+use crate::Ed25519PrivateKey;
 use ed25519_dalek::VerifyingKey;
 use std::convert::TryInto;
 use tracing::{debug, info};
@@ -92,7 +92,7 @@ impl KeyManager for PivYubiKey {
     fn import_key(
         &mut self,
         key: Ed25519PrivateKey,
-        vk: Ed25519PublicKey,
+        vk: VerifyingKey,
         config: KeyConfig,
     ) -> YkadaResult<()> {
         self.ensure_authenticated()?;
@@ -120,7 +120,7 @@ impl KeyManager for PivYubiKey {
         // Store the Cardano verifying key (kL * G) so `read_public_key` can retrieve it.
         // The YubiKey firmware uses standard RFC 8032 Ed25519 (SHA-512 expansion), which
         // produces a different public key than the Cardano one, so metadata() can't be used.
-        let mut vk_bytes = *vk.as_array();
+        let mut vk_bytes = *vk.as_bytes();
         self.device
             .save_object(slot_to_vk_object_id(config.slot), &mut vk_bytes)?;
 
@@ -128,7 +128,7 @@ impl KeyManager for PivYubiKey {
         Ok(())
     }
 
-    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<Ed25519PublicKey> {
+    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<VerifyingKey> {
         if !self.authenticated {
             return Err(YkadaError::AuthenticationFailed {
                 reason: "Not authenticated".to_string(),
@@ -174,14 +174,13 @@ impl KeyManager for PivYubiKey {
                 })?;
 
         let verifying_key = VerifyingKey::from_bytes(&public_key_array)?;
-        let pk = Ed25519PublicKey::from(verifying_key);
 
         // Store generated public key so read_public_key can retrieve it consistently.
-        let mut vk_bytes = *pk.as_array();
+        let mut vk_bytes = *verifying_key.as_bytes();
         self.device
             .save_object(slot_to_vk_object_id(config.slot), &mut vk_bytes)?;
 
-        Ok(pk)
+        Ok(verifying_key)
     }
 }
 
@@ -195,7 +194,7 @@ impl DeviceReader for PivYubiKey {
         (v.major, v.minor, v.patch)
     }
 
-    fn read_public_key(&mut self, slot: Slot) -> YkadaResult<Option<Ed25519PublicKey>> {
+    fn read_public_key(&mut self, slot: Slot) -> YkadaResult<Option<VerifyingKey>> {
         // Read the Cardano verifying key stored by import_key / generate_key.
         // We do NOT use metadata() because the YubiKey firmware uses standard RFC 8032
         // Ed25519 (SHA-512 seed expansion) to derive its stored public key, which differs
@@ -208,7 +207,7 @@ impl DeviceReader for PivYubiKey {
                         .map_err(|_| YkadaError::InvalidKeyFormat {
                             format: "Expected 32-byte stored verifying key".to_string(),
                         })?;
-                Ok(Some(VerifyingKey::from_bytes(&arr)?.into()))
+                Ok(Some(VerifyingKey::from_bytes(&arr)?))
             }
             _ => Ok(None),
         }
@@ -252,10 +251,9 @@ impl Signer for PivYubiKey {
 #[cfg(all(test, feature = "hardware-tests"))]
 mod tests {
     use super::*;
-    use crate::contract_tests_for;
     use crate::logic::Bech32Encodable;
     use crate::model::{ManagementKey, Network, SeedPhrase, WalletConfig};
-    use crate::ports::contract_tests::yubikey_contract;
+    use crate::run_yubikey_contract_tests;
     use crate::use_cases::{generate_wallet_use_case, wallet_info_use_case};
 
     const TESTING_MANAGEMENT_KEY: ManagementKey = ManagementKey::new([
@@ -263,7 +261,7 @@ mod tests {
     ]);
 
     const KNOWN_PHRASE: &str = "cash antique chimney egg enact blast embody ecology dust fiction hope black crisp thunder tiny fame mixture object text boil odor minor ordinary deer";
-    const KNOWN_ADDRESS_MAINNET: &str = "addr1q803e62cfnzevmtakaqsf4fvew4psjhgpl494ywxeuqdv5pjp2g6fyqjqh0l6k3rp90ltutqhxwfgkvg3tkacwvkuwqsx93m47";
+    const KNOWN_ADDRESS_MAINNET: &str = "addr1qx2l2ttwpsxc8j4830x7hpz0qgaf2hkt6dn7x940vcneycwcnz39fcfw4xs5elpnpmfmh45vhx2qk3h8q56ma0zg9nnsvzxxtr";
 
     #[test]
     fn test_device_finder_success() {
@@ -306,22 +304,8 @@ mod tests {
         );
     }
 
-    contract_tests_for!(
+    run_yubikey_contract_tests!(
         real_yubikey_contract,
-        make = || PivDeviceFinder.find_first().expect("YubiKey not found"),
-        tests = {
-            test_pin_verification_success => yubikey_contract::test_pin_verification_success,
-            test_pin_verification_failure => yubikey_contract::test_pin_verification_failure,
-            test_mgmt_key_authentication_success_default => yubikey_contract::test_mgmt_key_authentication_success_default,
-            test_mgmt_key_authentication_failure => yubikey_contract::test_mgmt_key_authentication_failure,
-            test_import_key_success => yubikey_contract::test_import_key_success,
-            test_import_key_fail_not_authenticated => yubikey_contract::test_import_key_fail_not_authenticated,
-            test_sign_key_not_found => yubikey_contract::test_sign_key_not_found,
-            test_sign_invalid_pin => yubikey_contract::test_sign_invalid_pin,
-            test_sign_success => yubikey_contract::test_sign_success,
-            test_generate_key_not_authenticated => yubikey_contract::test_generate_key_not_authenticated,
-            test_generate_key_success => yubikey_contract::test_generate_key_success,
-            test_import_seed_phrase_derived_key => yubikey_contract::test_import_seed_phrase_derived_key,
-        }
+        make = || PivDeviceFinder.find_first().expect("YubiKey not found")
     );
 }

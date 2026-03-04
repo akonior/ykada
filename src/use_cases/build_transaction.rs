@@ -52,7 +52,7 @@ where
         "Unsigned transaction built ({} bytes)",
         built.tx_bytes.0.len()
     );
-    debug!("Transaction body hash: {}", hex::encode(&built.tx_hash.0));
+    debug!("Transaction body hash: {}", hex::encode(built.tx_hash.0));
     debug!("Unsigned CBOR: {}", hex::encode(&built.tx_bytes.0));
 
     Ok(built.tx_bytes.0)
@@ -126,13 +126,13 @@ where
         .build_conway_raw()
         .map_err(|e| YkadaError::NetworkError(format!("tx build error: {e}")))?;
 
-    debug!("Transaction body hash: {}", hex::encode(&built.tx_hash.0));
+    debug!("Transaction body hash: {}", hex::encode(built.tx_hash.0));
     debug!("Unsigned CBOR: {}", hex::encode(&built.tx_bytes.0));
 
     info!(
         "Signing transaction (slot: {:?}) hash: {}",
         params.payment_slot,
-        hex::encode(&built.tx_hash.0)
+        hex::encode(built.tx_hash.0)
     );
 
     let sig_bytes = signer.sign(

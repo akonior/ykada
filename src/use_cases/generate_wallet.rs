@@ -1,8 +1,6 @@
 use crate::error::YkadaResult;
 use crate::logic::{derive_cardano_address, derive_key_pair, Bech32Encodable};
-use crate::model::{
-    DerivationPath, Ed25519PublicKey, GeneratedWallet, ManagementKey, SeedPhrase, WalletConfig,
-};
+use crate::model::{DerivationPath, GeneratedWallet, ManagementKey, SeedPhrase, WalletConfig};
 use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
 use tracing::{debug, info};
 
@@ -57,12 +55,8 @@ where
         touch_policy: config.touch_policy,
     };
 
-    device.import_key(
-        payment_sk,
-        Ed25519PublicKey::from(payment_vk),
-        payment_config,
-    )?;
-    device.import_key(stake_sk, Ed25519PublicKey::from(stake_vk), stake_config)?;
+    device.import_key(payment_sk, payment_vk, payment_config)?;
+    device.import_key(stake_sk, stake_vk, stake_config)?;
 
     info!(
         "Wallet generated: address={}",

@@ -17,12 +17,8 @@ where
 
     let serial = device.serial();
     let firmware = device.firmware_version();
-    let payment_vk = device
-        .read_public_key(payment_slot)?
-        .map(|pk| pk.to_verifying_key());
-    let stake_vk = device
-        .read_public_key(stake_slot)?
-        .map(|pk| pk.to_verifying_key());
+    let payment_vk = device.read_public_key(payment_slot)?;
+    let stake_vk = device.read_public_key(stake_slot)?;
     let address = payment_vk
         .zip(stake_vk)
         .map(|(p, s)| derive_cardano_address(&p, &s, network));
@@ -43,8 +39,7 @@ mod tests {
     use crate::adapters::fake_yubikey::{FakeDeviceFinder, FakeYubiKey};
     use crate::logic::{derive_key_pair, Bech32Encodable};
     use crate::model::{
-        DerivationPath, Ed25519PublicKey, ManagementKey, Network, Pin, SeedPhrase, Slot,
-        WalletConfig,
+        DerivationPath, ManagementKey, Network, Pin, SeedPhrase, Slot, WalletConfig,
     };
     use crate::ports::{KeyConfig, KeyManager};
     use crate::use_cases::generate_wallet_use_case;
@@ -78,7 +73,7 @@ mod tests {
         device
             .import_key(
                 payment_sk,
-                Ed25519PublicKey::from(payment_vk),
+                payment_vk,
                 KeyConfig {
                     slot: config.payment_slot,
                     pin_policy: config.pin_policy,
@@ -89,7 +84,7 @@ mod tests {
         device
             .import_key(
                 stake_sk,
-                Ed25519PublicKey::from(stake_vk),
+                stake_vk,
                 KeyConfig {
                     slot: config.stake_slot,
                     pin_policy: config.pin_policy,
@@ -150,7 +145,7 @@ mod tests {
         device
             .import_key(
                 payment_sk,
-                Ed25519PublicKey::from(payment_vk),
+                payment_vk,
                 KeyConfig {
                     slot: config.payment_slot,
                     pin_policy: config.pin_policy,

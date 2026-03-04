@@ -1,4 +1,3 @@
-use crate::model::Ed25519PublicKey;
 use crate::ports::{KeyConfig, ManagementKeyVerifier};
 use ed25519_dalek::pkcs8::DecodePrivateKey;
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -26,8 +25,7 @@ where
 
     device.authenticate(mgmt_key)?;
 
-    let vk = Ed25519PublicKey::from(signing_key.verifying_key());
-    device.import_key(secret_key.into(), vk, config)?;
+    device.import_key(secret_key.into(), signing_key.verifying_key(), config)?;
 
     debug!("Loaded private key to YubiKey");
 

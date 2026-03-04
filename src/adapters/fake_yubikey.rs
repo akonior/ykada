@@ -3,7 +3,7 @@ use crate::model::{Algorithm, ManagementKey, Pin, Slot};
 use crate::ports::{
     DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
-use crate::{Ed25519PrivateKey, Ed25519PublicKey};
+use crate::{run_yubikey_contract_tests, Ed25519PrivateKey};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::rng;
 use rand::RngCore;
@@ -66,7 +66,7 @@ impl KeyManager for FakeYubiKey {
     fn import_key(
         &mut self,
         key: Ed25519PrivateKey,
-        vk: Ed25519PublicKey,
+        vk: VerifyingKey,
         config: KeyConfig,
     ) -> YkadaResult<()> {
         if !self.authenticated {
@@ -78,12 +78,12 @@ impl KeyManager for FakeYubiKey {
             hex::encode(key.as_bytes()),
             hex::encode(vk.as_bytes()),
         );
-        self.keys.insert(config.slot, (key, vk.to_verifying_key()));
+        self.keys.insert(config.slot, (key, vk));
         info!("FakeYubiKey: key imported to slot {:?}", config.slot);
         Ok(())
     }
 
-    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<Ed25519PublicKey> {
+    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<VerifyingKey> {
         if !self.authenticated {
             return Err(YkadaError::AuthenticationFailed {
                 reason: "Not authenticated".to_string(),
@@ -100,7 +100,7 @@ impl KeyManager for FakeYubiKey {
             config.slot,
             (Ed25519PrivateKey::from(secret_bytes), verifying_key),
         );
-        Ok(verifying_key.into())
+        Ok(verifying_key)
     }
 }
 
@@ -152,8 +152,8 @@ impl DeviceReader for FakeYubiKey {
         self.firmware
     }
 
-    fn read_public_key(&mut self, slot: Slot) -> YkadaResult<Option<Ed25519PublicKey>> {
-        Ok(self.keys.get(&slot).map(|(_, vk)| (*vk).into()))
+    fn read_public_key(&mut self, slot: Slot) -> YkadaResult<Option<VerifyingKey>> {
+        Ok(self.keys.get(&slot).map(|(_, vk)| *vk))
     }
 }
 
@@ -169,27 +169,7 @@ impl DeviceFinder for FakeDeviceFinder {
     }
 }
 
-mod tests {
-    use super::*;
-    use crate::contract_tests_for;
-    use crate::ports::contract_tests::yubikey_contract;
-
-    contract_tests_for!(
-        fake_yubikey_contract,
-        make = || FakeYubiKey::new(Pin::default()),
-        tests = {
-            test_pin_verification_success => yubikey_contract::test_pin_verification_success,
-            test_pin_verification_failure => yubikey_contract::test_pin_verification_failure,
-            test_mgmt_key_authentication_success_default => yubikey_contract::test_mgmt_key_authentication_success_default,
-            test_mgmt_key_authentication_failure => yubikey_contract::test_mgmt_key_authentication_failure,
-            test_import_key_success => yubikey_contract::test_import_key_success,
-            test_import_key_fail_not_authenticated => yubikey_contract::test_import_key_fail_not_authenticated,
-            test_sign_key_not_found => yubikey_contract::test_sign_key_not_found,
-            test_sign_invalid_pin => yubikey_contract::test_sign_invalid_pin,
-            test_sign_success => yubikey_contract::test_sign_success,
-            test_generate_key_not_authenticated => yubikey_contract::test_generate_key_not_authenticated,
-            test_generate_key_success => yubikey_contract::test_generate_key_success,
-            test_import_seed_phrase_derived_key => yubikey_contract::test_import_seed_phrase_derived_key,
-        }
-    );
-}
+run_yubikey_contract_tests!(
+    fake_yubikey_contract,
+    make = || FakeYubiKey::new(Pin::default())
+);

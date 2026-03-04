@@ -1,5 +1,5 @@
 use crate::logic::derive_key_pair;
-use crate::model::{DerivationPath, Ed25519PublicKey, SeedPhrase};
+use crate::model::{DerivationPath, SeedPhrase};
 use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
 use crate::{ManagementKey, YkadaResult};
 use ed25519_dalek::VerifyingKey;
@@ -43,7 +43,7 @@ where
 
     let mut device = finder.find_first()?;
     device.authenticate(mgmt_key)?;
-    device.import_key(private_key, Ed25519PublicKey::from(cardano_vk), config)?;
+    device.import_key(private_key, cardano_vk, config)?;
 
     info!("Key imported successfully to slot {:?}", slot);
     Ok(cardano_vk)
