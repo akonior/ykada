@@ -254,15 +254,6 @@ impl From<NetworkArg> for Network {
     }
 }
 
-fn slot_name(slot: SlotArg) -> &'static str {
-    match slot {
-        SlotArg::Authentication => "authentication",
-        SlotArg::Signature => "signature",
-        SlotArg::KeyManagement => "key-management",
-        SlotArg::CardAuthentication => "card-authentication",
-    }
-}
-
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
@@ -294,7 +285,6 @@ fn main() -> anyhow::Result<()> {
             let seed_phrase = SeedPhrase::try_from(seed.as_str()).context("invalid seed phrase")?;
             let wallet = ykada::import_wallet(seed_phrase, config, mgmt_key_opt.as_ref())
                 .context("failed to import wallet from seed phrase")?;
-            println!("Mnemonic (store safely): {}", wallet.mnemonic.phrase());
             info!(
                 "Payment verifying key:   {}",
                 wallet.payment_vk.to_bech32()?
@@ -418,10 +408,6 @@ fn main() -> anyhow::Result<()> {
             let (major, minor, patch) = info.firmware;
             println!("YubiKey serial:          {}", info.serial);
             println!("Firmware version:        {}.{}.{}", major, minor, patch);
-            println!("Payment slot:            {}", slot_name(payment_slot));
-            println!("Payment derivation path: m/1852'/1815'/0'/0/0");
-            println!("Stake slot:              {}", slot_name(stake_slot));
-            println!("Stake derivation path:   m/1852'/1815'/0'/2/0");
 
             match info.payment_vk {
                 Some(vk) => info!("Payment verifying key:   {}", vk.to_bech32()?),
@@ -434,8 +420,9 @@ fn main() -> anyhow::Result<()> {
                 ),
                 None => info!("Stake verifying key:     (none)"),
             }
-            if let Some(addr) = info.address {
-                println!("Cardano address:         {}", addr.to_bech32()?)
+            match info.address {
+                Some(addr) => println!("Cardano address:         {}", addr.to_bech32()?),
+                None => println!("Cardano address:         (no wallet — run `ykada generate` or `ykada import` first)"),
             }
         }
 

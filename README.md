@@ -7,7 +7,7 @@
 
 Hardware wallet for Cardano using YubiKey. Private keys never leave the device.
 
-Ykada stores Ed25519 signing keys on a YubiKey's PIV slots and uses them to sign Cardano transactions — keeping your keys offline and protected by PIN and physical touch.
+`ykada` stores Cardano signing keys on a YubiKey's PIV slots and uses them to sign Cardano transactions — keeping your keys offline and protected by PIN and physical touch.
 
 ## Install
 
@@ -87,7 +87,6 @@ Restore a wallet from an existing BIP39 seed phrase. Derives the same payment an
 
 ```
 $ ykada import --seed "slim fine attend tape wave input head crew shift desk find mutual square cake uncle morning provide naive around brief couple faint alcohol young"
-Mnemonic (store safely): slim fine attend tape wave input head crew shift desk find mutual square cake uncle morning provide naive around brief couple faint alcohol young
 Cardano address:         addr_test1qzsmxwwte2fw6cla5d4c725f3wkmth9k4ds923lgjq6vey0uxtmw20nuadt9qv2ak6adgskdtp3j6jx7xp39gs9wa5hs0z854g
 ```
 
