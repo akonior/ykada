@@ -146,10 +146,7 @@ pub mod yubikey_contract {
         let error = result.unwrap_err();
 
         assert!(
-            matches!(
-                error,
-                YkadaError::YubikeyLib(yubikey::Error::AuthenticationError)
-            ),
+            matches!(error, YkadaError::AuthenticationFailed { .. }),
             "error: {:?}",
             error
         );

@@ -573,9 +573,14 @@ fn run(command: Commands) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "hardware-tests"))]
 mod tests {
     use assert_cmd::Command;
+
+    const KNOWN_SEED: &str = "slim fine attend tape wave input head crew shift desk find mutual square cake uncle morning provide naive around brief couple faint alcohol young";
+    const KNOWN_ADDR: &str = "addr_test1qzsmxwwte2fw6cla5d4c725f3wkmth9k4ds923lgjq6vey0uxtmw20nuadt9qv2ak6adgskdtp3j6jx7xp39gs9wa5hs0z854g";
+    const FALLBACK_RECV: &str = "addr_test1qz6vzpsz3knmun4wxe5snhtvqslmujdgua7ralptg339extxmjk336y5qn6w87clfhdmu6nc0hfl4q2q9r0ft20ytdes6f5prn";
+    const MGMT_KEY: &str = "010203040506070801020304050607080102030405060709";
 
     #[test]
     fn test_cli_version_parameter() {
@@ -585,25 +590,100 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(not(feature = "hardware-tests"), ignore)]
-    fn test_cli_generate() {
-        let mut cmd = Command::cargo_bin("ykada").unwrap();
-        let result = cmd
-            .arg("generate-legacy")
-            .arg("--mgmt-key")
-            .arg("010203040506070801020304050607080102030405060709")
-            .assert();
+    fn test_info() {
+        Command::cargo_bin("ykada")
+            .unwrap()
+            .args(["info", "--network", "preview"])
+            .assert()
+            .success()
+            .stdout(predicates::str::contains("Cardano address:"))
+            .stdout(predicates::str::contains(KNOWN_ADDR));
+    }
 
-        let output = result.get_output();
-        let stdout = String::from_utf8_lossy(&output.stdout);
+    #[test]
+    fn test_import_predefined_seed() {
+        Command::cargo_bin("ykada")
+            .unwrap()
+            .args([
+                "import",
+                "--seed",
+                KNOWN_SEED,
+                "--network",
+                "preview",
+                "--pin-policy",
+                "never",
+                "--touch-policy",
+                "never",
+                "--mgmt-key",
+                MGMT_KEY,
+            ])
+            .assert()
+            .success()
+            .stdout(predicates::str::contains(KNOWN_ADDR));
 
-        println!("stdout: {}", stdout);
+        let output = Command::cargo_bin("ykada")
+            .unwrap()
+            .args(["balance", "--network", "preview"])
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
 
-        let trimmed = stdout.trim();
+        let stdout = String::from_utf8_lossy(&output);
         assert!(
-            trimmed.starts_with("Generated verifying key: addr_vk1"),
-            "Public key should start with 'addr_vk', got: {}",
-            trimmed
+            stdout.contains("ADA:"),
+            "Expected 'ADA:' in output, got: {stdout}"
         );
+
+        let ada_value: f64 = stdout
+            .lines()
+            .find(|l| l.contains("ADA:"))
+            .and_then(|l| l.split("ADA:").nth(1))
+            .and_then(|s| s.trim().parse().ok())
+            .expect("Could not parse ADA balance as f64");
+
+        assert!(ada_value > 0.0, "Expected ADA balance > 0, got {ada_value}");
+    }
+
+    #[test]
+    fn test_generate() {
+        Command::cargo_bin("ykada")
+            .unwrap()
+            .args([
+                "generate",
+                "--network",
+                "preview",
+                "--pin-policy",
+                "never",
+                "--touch-policy",
+                "never",
+                "--mgmt-key",
+                MGMT_KEY,
+            ])
+            .assert()
+            .success()
+            .stdout(predicates::str::contains("Mnemonic (store safely):"))
+            .stdout(predicates::str::contains(
+                "Cardano address:         addr_test1",
+            ));
+    }
+
+    #[test]
+    fn test_send() {
+        Command::cargo_bin("ykada")
+            .unwrap()
+            .args([
+                "send",
+                "--to",
+                FALLBACK_RECV,
+                "--lovelace",
+                "1500000",
+                "--network",
+                "preview",
+            ])
+            .assert()
+            .success()
+            .stdout(predicates::str::contains("Transaction ID:"));
     }
 }

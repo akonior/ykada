@@ -72,7 +72,9 @@ impl KeyManager for FakeYubiKey {
         config: KeyConfig,
     ) -> YkadaResult<()> {
         if !self.authenticated {
-            return Err(YkadaError::YubikeyLib(yubikey::Error::AuthenticationError));
+            return Err(YkadaError::AuthenticationFailed {
+                reason: "wrong management key".into(),
+            });
         }
         debug!(
             "FakeYubiKey importing key to slot {:?}: private_key={} vk={}",
