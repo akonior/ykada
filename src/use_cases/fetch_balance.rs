@@ -14,7 +14,7 @@ pub fn fetch_balance_use_case<B: BalanceFetcher>(
 mod tests {
     use super::*;
     use crate::logic::derive_cardano_address;
-    use crate::logic::derive_key_pair;
+    use crate::logic::derive_signing_key;
     use crate::model::{DerivationPath, Network, SeedPhrase, TokenBalance};
 
     struct FakeBalanceFetcher {
@@ -46,10 +46,10 @@ mod tests {
         let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
         let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
         let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
-        let payment_vk = derive_key_pair(&seed, "", &payment_path)
+        let payment_vk = derive_signing_key(&seed, "", &payment_path)
             .unwrap()
             .verifying_key();
-        let stake_vk = derive_key_pair(&seed, "", &stake_path)
+        let stake_vk = derive_signing_key(&seed, "", &stake_path)
             .unwrap()
             .verifying_key();
         derive_cardano_address(&payment_vk, &stake_vk, Network::Preview)

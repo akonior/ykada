@@ -1,5 +1,5 @@
 use crate::error::YkadaResult;
-use crate::logic::{derive_cardano_address, derive_key_pair, Bech32Encodable};
+use crate::logic::{derive_cardano_address, derive_signing_key, Bech32Encodable};
 use crate::model::{DerivationPath, GeneratedWallet, ManagementKey, SeedPhrase, WalletConfig};
 use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
 use tracing::{debug, info};
@@ -19,7 +19,7 @@ where
     let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0")?;
     let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0")?;
 
-    let payment_sk = derive_key_pair(&seed, "", &payment_path)?;
+    let payment_sk = derive_signing_key(&seed, "", &payment_path)?;
     let payment_vk = payment_sk.verifying_key();
     debug!(
         "Payment private key: {}",
@@ -30,7 +30,7 @@ where
         hex::encode(payment_vk.as_bytes())
     );
 
-    let stake_sk = derive_key_pair(&seed, "", &stake_path)?;
+    let stake_sk = derive_signing_key(&seed, "", &stake_path)?;
     let stake_vk = stake_sk.verifying_key();
     debug!("Stake private key: {}", hex::encode(stake_sk.as_bytes()));
     debug!("Stake verifying key: {}", hex::encode(stake_vk.as_bytes()));

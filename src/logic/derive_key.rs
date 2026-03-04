@@ -2,18 +2,12 @@ use crate::model::{CardanoKey, DerivationPath, SeedPhrase};
 use crate::YkadaResult;
 use ed25519_dalek::SigningKey;
 
-pub fn derive_key_pair(
+pub fn derive_signing_key(
     seed: &SeedPhrase,
     passphrase: &str,
     path: &DerivationPath,
 ) -> YkadaResult<SigningKey> {
     let root = CardanoKey::from_seed_phrase(seed, passphrase)?;
-    // Both the real YubiKey (import_cv_key) and FakeYubiKey.sign() treat the imported
-    // kL bytes as an Ed25519 seed (RFC 8032): they internally expand via SHA-512 and
-    // sign with SHA512_clamped(kL).  The corresponding public key is therefore also
-    // derived via RFC 8032, NOT via direct scalar multiplication (kL * G) as the
-    // Cardano BIP32-Ed25519 spec would give.  Using the RFC 8032 verifying key here
-    // ensures the witness VKey matches the actual signing key on the device.
     Ok(root.derive(path).private_key())
 }
 
@@ -34,7 +28,7 @@ mod tests {
         };
         debug!("Deriving key from seed phrase");
         debug!("Derivation path: {:?}", derivation_path);
-        derive_key_pair(&seed, passphrase, &derivation_path)
+        derive_signing_key(&seed, passphrase, &derivation_path)
     }
 
     #[test]
@@ -72,12 +66,12 @@ mod tests {
     }
 
     #[test]
-    fn test_derive_key_pair_payment_path() {
+    fn test_derive_signing_key_payment_path() {
         let phrase = "test walk nut penalty hip pave soap entry language right filter choice";
         let seed = SeedPhrase::try_from(phrase).unwrap();
         let path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
 
-        let result = derive_key_pair(&seed, "", &path);
+        let result = derive_signing_key(&seed, "", &path);
 
         assert!(result.is_ok(), "error: {:?}", result.err());
         let sk = result.unwrap();
@@ -86,12 +80,12 @@ mod tests {
     }
 
     #[test]
-    fn test_derive_key_pair_stake_path() {
+    fn test_derive_signing_key_stake_path() {
         let phrase = "test walk nut penalty hip pave soap entry language right filter choice";
         let seed = SeedPhrase::try_from(phrase).unwrap();
         let path = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
 
-        let result = derive_key_pair(&seed, "", &path);
+        let result = derive_signing_key(&seed, "", &path);
 
         assert!(result.is_ok(), "error: {:?}", result.err());
         let sk = result.unwrap();
@@ -100,13 +94,17 @@ mod tests {
     }
 
     #[test]
-    fn test_derive_key_pair_deterministic() {
+    fn test_derive_signing_key_deterministic() {
         let phrase = "test walk nut penalty hip pave soap entry language right filter choice";
         let seed = SeedPhrase::try_from(phrase).unwrap();
         let path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
 
-        let vk1 = derive_key_pair(&seed, "", &path).unwrap().verifying_key();
-        let vk2 = derive_key_pair(&seed, "", &path).unwrap().verifying_key();
+        let vk1 = derive_signing_key(&seed, "", &path)
+            .unwrap()
+            .verifying_key();
+        let vk2 = derive_signing_key(&seed, "", &path)
+            .unwrap()
+            .verifying_key();
         assert_eq!(vk1.as_bytes(), vk2.as_bytes());
     }
 }

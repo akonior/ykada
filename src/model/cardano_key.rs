@@ -39,6 +39,14 @@ impl CardanoKey {
         VerifyingKey::from_bytes(&arr).expect("XPub public_key_bytes() is a valid Ed25519 point")
     }
 
+    // Extracts the left 32 bytes (kL) from the XPrv and wraps them as an RFC 8032
+    // SigningKey seed.  This introduces a second SHA-512 hash at signing time:
+    // Cardano BIP32-Ed25519 derived kL as a scalar via one SHA-512 pass during
+    // key derivation; treating kL as an RFC 8032 seed means sign() will run
+    // SHA-512(kL) again to obtain the actual scalar and nonce.  The resulting
+    // public key (SHA-512(kL)*G clamped) differs from kL*G but matches what both
+    // the YubiKey firmware (import_cv_key) and FakeYubiKey produce, so the witness
+    // VKey is consistent with the key stored on the device.
     pub fn private_key(&self) -> SigningKey {
         let extended_secret = self.0.extended_secret_key_bytes();
         let mut k_l = [0u8; 32];

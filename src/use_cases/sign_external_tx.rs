@@ -119,7 +119,7 @@ mod tests {
     }
 
     fn build_sample_unsigned_tx() -> Vec<u8> {
-        use crate::logic::{derive_cardano_address, derive_key_pair};
+        use crate::logic::{derive_cardano_address, derive_signing_key};
         use crate::model::{DerivationPath, Network, SeedPhrase};
         use pallas_addresses::Address;
         use pallas_crypto::hash::Hash;
@@ -131,10 +131,10 @@ mod tests {
         .unwrap();
         let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
         let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
-        let payment_vk = derive_key_pair(&seed, "", &payment_path)
+        let payment_vk = derive_signing_key(&seed, "", &payment_path)
             .unwrap()
             .verifying_key();
-        let stake_vk = derive_key_pair(&seed, "", &stake_path)
+        let stake_vk = derive_signing_key(&seed, "", &stake_path)
             .unwrap()
             .verifying_key();
         let addr = derive_cardano_address(&payment_vk, &stake_vk, Network::Preview);

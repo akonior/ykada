@@ -1,4 +1,4 @@
-use crate::logic::derive_key_pair;
+use crate::logic::derive_signing_key;
 use crate::model::{DerivationPath, SeedPhrase};
 use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
 use crate::{ManagementKey, YkadaResult};
@@ -30,7 +30,7 @@ where
         slot, derivation_path
     );
 
-    let private_key = derive_key_pair(&seed, passphrase, &derivation_path)?;
+    let private_key = derive_signing_key(&seed, passphrase, &derivation_path)?;
     let cardano_vk = private_key.verifying_key();
     debug!(
         "Derived private key: {}",
