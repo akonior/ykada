@@ -288,7 +288,7 @@ mod tests {
             ..WalletConfig::default()
         };
 
-        generate_wallet_use_case(&finder, seed, config, Some(&TESTING_MANAGEMENT_KEY))
+        generate_wallet_use_case(&finder, Some(seed), config, Some(&TESTING_MANAGEMENT_KEY))
             .expect("generate_wallet_use_case failed");
 
         let info = wallet_info_use_case(

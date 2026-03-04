@@ -4,12 +4,10 @@ pub use crate::logic::{banner, Bech32Encodable, Bech32Error, StakeVerifyingKey};
 pub use crate::model::*;
 use crate::ports::{DeviceFinder, KeyConfig};
 use crate::use_cases::{
-    build_transaction_use_case, fetch_balance_use_case, generate_key_use_case,
-    generate_wallet_use_case, import_private_key_from_seed_phrase_use_case,
-    import_private_key_in_der_format_use_case, parse_tx_file_json,
-    sign_and_submit_external_tx_use_case, sign_and_submit_transaction_use_case,
-    sign_external_tx_use_case, sign_transaction_use_case, wallet_info_use_case,
-    SignAndSubmitParams, SignExternalTxParams, TransactionParams,
+    fetch_balance_use_case, generate_key_use_case, generate_wallet_use_case,
+    import_private_key_from_seed_phrase_use_case, import_private_key_in_der_format_use_case,
+    parse_tx_file_json, send_ada_use_case, sign_tx_use_case, wallet_info_use_case, SendAdaParams,
+    SignExternalTxParams,
 };
 use ed25519_dalek::VerifyingKey;
 
@@ -40,14 +38,16 @@ pub fn import_wallet(
     mgmt_key: Option<&ManagementKey>,
 ) -> YkadaResult<GeneratedWallet> {
     let finder = PivDeviceFinder;
-    generate_wallet_use_case(&finder, seed, config, mgmt_key)
+    generate_wallet_use_case(&finder, Some(seed), config, mgmt_key)
 }
 
-pub fn generate_wallet(
+pub fn generate_or_import_wallet(
+    seed: Option<SeedPhrase>,
     config: WalletConfig,
     mgmt_key: Option<&ManagementKey>,
 ) -> YkadaResult<GeneratedWallet> {
-    import_wallet(SeedPhrase::generate()?, config, mgmt_key)
+    let finder = PivDeviceFinder;
+    generate_wallet_use_case(&finder, seed, config, mgmt_key)
 }
 
 pub fn wallet_info(
@@ -64,110 +64,67 @@ pub fn fetch_balance(address: &CardanoAddress, network: Network) -> YkadaResult<
     fetch_balance_use_case(&client, address)
 }
 
-pub fn build_transaction(
+#[allow(clippy::too_many_arguments)]
+pub fn send_ada(
     payment_slot: Slot,
     stake_slot: Slot,
     network: Network,
     recipient: &str,
     send_lovelace: u64,
     fee_lovelace: u64,
-) -> YkadaResult<Vec<u8>> {
-    let info = wallet_info(payment_slot, stake_slot, network)?;
-    let change_address = info.address.ok_or_else(|| {
-        YkadaError::NetworkError("no address on YubiKey — import a wallet first".into())
-    })?;
-
+    mode: SendMode,
+    pin: Option<Pin>,
+) -> YkadaResult<SendOutcome> {
+    let finder = PivDeviceFinder;
+    let client = KoiosClient::for_network(network);
+    let wallet = wallet_info_use_case(&finder, payment_slot, stake_slot, network)?;
     let recipient_bytes = decode_bech32(recipient)?;
-    let client = KoiosClient::for_network(network);
-
-    build_transaction_use_case(
+    send_ada_use_case(
+        &finder,
         &client,
         &client,
-        TransactionParams {
-            recipient_address_bytes: recipient_bytes,
+        &client,
+        SendAdaParams {
+            wallet,
+            recipient_bytes,
             send_lovelace,
             fee_lovelace,
-            change_address,
-        },
-    )
-}
-
-pub fn sign_transaction(
-    payment_slot: Slot,
-    stake_slot: Slot,
-    network: Network,
-    recipient: &str,
-    send_lovelace: u64,
-    fee_lovelace: u64,
-    pin: Option<Pin>,
-) -> YkadaResult<Vec<u8>> {
-    let info = wallet_info(payment_slot, stake_slot, network)?;
-    let change_address = info.address.ok_or_else(|| {
-        YkadaError::NetworkError("no address on YubiKey — import a wallet first".into())
-    })?;
-    let payment_vkey: [u8; 32] = info
-        .payment_vk
-        .ok_or_else(|| {
-            YkadaError::NetworkError("no payment key on YubiKey — import a wallet first".into())
-        })?
-        .to_bytes();
-    let recipient_address_bytes = decode_bech32(recipient)?;
-    let client = KoiosClient::for_network(network);
-    let finder = PivDeviceFinder;
-    let mut yubikey = finder.find_first()?;
-    sign_transaction_use_case(
-        &client,
-        &client,
-        &mut yubikey,
-        SignAndSubmitParams {
-            recipient_address_bytes,
-            send_lovelace,
-            fee_lovelace,
-            change_address,
-            payment_vkey,
             payment_slot,
+            mode,
             pin,
         },
     )
 }
 
-pub fn send_transaction(
+pub fn sign_tx_file(
+    tx_file_content: &str,
     payment_slot: Slot,
     stake_slot: Slot,
     network: Network,
-    recipient: &str,
-    send_lovelace: u64,
-    fee_lovelace: u64,
+    mode: SendMode,
     pin: Option<Pin>,
-) -> YkadaResult<String> {
-    let info = wallet_info(payment_slot, stake_slot, network)?;
-    let change_address = info.address.ok_or_else(|| {
-        YkadaError::NetworkError("no address on YubiKey — import a wallet first".into())
-    })?;
-    let payment_vkey: [u8; 32] = info
+) -> YkadaResult<SendOutcome> {
+    let unsigned_cbor = parse_tx_file_json(tx_file_content)?;
+    let finder = PivDeviceFinder;
+    let info = wallet_info_use_case(&finder, payment_slot, stake_slot, network)?;
+    let payment_vkey = info
         .payment_vk
         .ok_or_else(|| {
             YkadaError::NetworkError("no payment key on YubiKey — import a wallet first".into())
         })?
         .to_bytes();
-    let recipient_address_bytes = decode_bech32(recipient)?;
-    let client = KoiosClient::for_network(network);
-    let finder = PivDeviceFinder;
     let mut yubikey = finder.find_first()?;
-    sign_and_submit_transaction_use_case(
-        &client,
-        &client,
+    let client = KoiosClient::for_network(network);
+    sign_tx_use_case(
         &mut yubikey,
         &client,
-        SignAndSubmitParams {
-            recipient_address_bytes,
-            send_lovelace,
-            fee_lovelace,
-            change_address,
+        &unsigned_cbor,
+        SignExternalTxParams {
             payment_vkey,
             payment_slot,
             pin,
         },
+        mode,
     )
 }
 
@@ -191,65 +148,5 @@ pub fn import_private_key_from_seed_phrase(
         path,
         config,
         mgmt_key,
-    )
-}
-
-pub fn sign_external_tx(
-    tx_file_content: &str,
-    payment_slot: Slot,
-    stake_slot: Slot,
-    network: Network,
-    pin: Option<Pin>,
-) -> YkadaResult<Vec<u8>> {
-    let unsigned_cbor = parse_tx_file_json(tx_file_content)?;
-    let info = wallet_info(payment_slot, stake_slot, network)?;
-    let payment_vkey: [u8; 32] = info
-        .payment_vk
-        .ok_or_else(|| {
-            YkadaError::NetworkError("no payment key on YubiKey — import a wallet first".into())
-        })?
-        .to_bytes();
-
-    let finder = PivDeviceFinder;
-    let mut yubikey = finder.find_first()?;
-    sign_external_tx_use_case(
-        &mut yubikey,
-        &unsigned_cbor,
-        SignExternalTxParams {
-            payment_vkey,
-            payment_slot,
-            pin,
-        },
-    )
-}
-
-pub fn sign_and_send_external_tx(
-    tx_file_content: &str,
-    payment_slot: Slot,
-    stake_slot: Slot,
-    network: Network,
-    pin: Option<Pin>,
-) -> YkadaResult<String> {
-    let unsigned_cbor = parse_tx_file_json(tx_file_content)?;
-    let info = wallet_info(payment_slot, stake_slot, network)?;
-    let payment_vkey: [u8; 32] = info
-        .payment_vk
-        .ok_or_else(|| {
-            YkadaError::NetworkError("no payment key on YubiKey — import a wallet first".into())
-        })?
-        .to_bytes();
-
-    let finder = PivDeviceFinder;
-    let mut yubikey = finder.find_first()?;
-    let client = KoiosClient::for_network(network);
-    sign_and_submit_external_tx_use_case(
-        &mut yubikey,
-        &client,
-        &unsigned_cbor,
-        SignExternalTxParams {
-            payment_vkey,
-            payment_slot,
-            pin,
-        },
     )
 }

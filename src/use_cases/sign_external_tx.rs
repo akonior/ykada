@@ -3,7 +3,7 @@ use pallas_primitives::{conway, Fragment, NonEmptySet};
 use tracing::{debug, info};
 
 use crate::error::{YkadaError, YkadaResult};
-use crate::model::{Algorithm, Pin, Slot};
+use crate::model::{Algorithm, Pin, SendMode, SendOutcome, Slot};
 use crate::ports::{Signer, TxSubmitter};
 
 #[derive(serde::Deserialize)]
@@ -75,6 +75,31 @@ pub fn sign_external_tx_use_case<S: Signer>(
     debug!("Signed CBOR: {}", hex::encode(&signed_bytes));
 
     Ok(signed_bytes)
+}
+
+pub fn sign_tx_use_case<S, X>(
+    signer: &mut S,
+    tx_submitter: &X,
+    unsigned_cbor: &[u8],
+    params: SignExternalTxParams,
+    mode: SendMode,
+) -> YkadaResult<SendOutcome>
+where
+    S: Signer,
+    X: TxSubmitter,
+{
+    match mode {
+        SendMode::SignOnly => {
+            sign_external_tx_use_case(signer, unsigned_cbor, params).map(SendOutcome::Cbor)
+        }
+        SendMode::SignAndSubmit => {
+            sign_and_submit_external_tx_use_case(signer, tx_submitter, unsigned_cbor, params)
+                .map(SendOutcome::TxHash)
+        }
+        SendMode::DryRun => Err(YkadaError::NetworkError(
+            "DryRun is not valid for sign-tx".into(),
+        )),
+    }
 }
 
 pub fn sign_and_submit_external_tx_use_case<S: Signer, X: TxSubmitter>(

@@ -8,7 +8,7 @@ use tracing::{debug, info};
 
 pub fn generate_wallet_use_case<F>(
     finder: &F,
-    seed: SeedPhrase,
+    seed: Option<SeedPhrase>,
     config: WalletConfig,
     mgmt_key: Option<&ManagementKey>,
 ) -> YkadaResult<GeneratedWallet>
@@ -17,6 +17,11 @@ where
     F::Device: KeyManager + ManagementKeyVerifier + DeviceReader,
 {
     info!("Generating Cardano wallet (network: {:?})", config.network);
+
+    let seed = match seed {
+        Some(s) => s,
+        None => SeedPhrase::generate()?,
+    };
 
     let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0")?;
     let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0")?;
@@ -108,7 +113,7 @@ mod tests {
         let config = WalletConfig::default();
         let mgmt_key = make_mgmt_key();
 
-        let result = generate_wallet_use_case(&finder, seed, config, Some(&mgmt_key));
+        let result = generate_wallet_use_case(&finder, Some(seed), config, Some(&mgmt_key));
 
         assert!(result.is_ok(), "error: {:?}", result.err());
         let wallet = result.unwrap();
@@ -132,7 +137,8 @@ mod tests {
         };
         let mgmt_key = make_mgmt_key();
 
-        let wallet = generate_wallet_use_case(&finder, seed, config, Some(&mgmt_key)).unwrap();
+        let wallet =
+            generate_wallet_use_case(&finder, Some(seed), config, Some(&mgmt_key)).unwrap();
         let encoded = wallet.address.to_bech32().unwrap();
         assert!(encoded.starts_with("addr_test1"), "got: {}", encoded);
     }
@@ -143,7 +149,7 @@ mod tests {
         let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
         let config = WalletConfig::default();
 
-        let result = generate_wallet_use_case(&finder, seed, config, None);
+        let result = generate_wallet_use_case(&finder, Some(seed), config, None);
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), YkadaError::NotFound));
@@ -156,7 +162,7 @@ mod tests {
         let config = WalletConfig::default();
         let wrong_key = ManagementKey::new([1u8; 24]);
 
-        let result = generate_wallet_use_case(&finder, seed, config, Some(&wrong_key));
+        let result = generate_wallet_use_case(&finder, Some(seed), config, Some(&wrong_key));
 
         assert!(result.is_err());
         assert!(matches!(

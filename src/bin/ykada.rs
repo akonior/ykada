@@ -6,8 +6,8 @@ use tracing::info;
 
 use ykada::{
     api::{
-        Bech32Encodable, Network, Pin, PinPolicy, SeedPhrase, Slot, StakeVerifyingKey, TouchPolicy,
-        WalletConfig,
+        Bech32Encodable, Network, Pin, PinPolicy, SeedPhrase, SendMode, SendOutcome, Slot,
+        StakeVerifyingKey, TouchPolicy, WalletConfig,
     },
     DerPrivateKey,
 };
@@ -376,14 +376,11 @@ fn run(command: Commands) -> anyhow::Result<()> {
                 network: network.into(),
             };
             let mgmt_key_opt = mgmt_key.map(|s| s.try_into()).transpose()?;
-            let wallet = match seed {
-                Some(phrase) => {
-                    let seed_phrase =
-                        SeedPhrase::try_from(phrase.as_str()).context("invalid seed phrase")?;
-                    ykada::import_wallet(seed_phrase, config, mgmt_key_opt.as_ref())?
-                }
-                None => ykada::generate_wallet(config, mgmt_key_opt.as_ref())?,
-            };
+            let seed_phrase = seed
+                .map(|p| SeedPhrase::try_from(p.as_str()).context("invalid seed phrase"))
+                .transpose()?;
+            let wallet =
+                ykada::api::generate_or_import_wallet(seed_phrase, config, mgmt_key_opt.as_ref())?;
             println!("Mnemonic (store safely): {}", wallet.mnemonic.phrase());
             info!(
                 "Payment verifying key:   {}",
@@ -475,26 +472,23 @@ fn run(command: Commands) -> anyhow::Result<()> {
             let content = std::fs::read_to_string(&tx_file)
                 .with_context(|| format!("failed to read transaction file: {tx_file}"))?;
             let pin = pin.map(|p| p.parse::<Pin>()).transpose()?;
-            if send {
-                let tx_hash = ykada::api::sign_and_send_external_tx(
-                    &content,
-                    payment_slot.into(),
-                    stake_slot.into(),
-                    network.into(),
-                    pin,
-                )
-                .context("failed to sign and submit transaction")?;
-                println!("Transaction ID: {tx_hash}");
+            let mode = if send {
+                SendMode::SignAndSubmit
             } else {
-                let cbor = ykada::api::sign_external_tx(
-                    &content,
-                    payment_slot.into(),
-                    stake_slot.into(),
-                    network.into(),
-                    pin,
-                )
-                .context("failed to sign transaction")?;
-                println!("{}", hex::encode(&cbor));
+                SendMode::SignOnly
+            };
+            match ykada::api::sign_tx_file(
+                &content,
+                payment_slot.into(),
+                stake_slot.into(),
+                network.into(),
+                mode,
+                pin,
+            )
+            .context("failed to sign transaction")?
+            {
+                SendOutcome::Cbor(cbor) => println!("{}", hex::encode(&cbor)),
+                SendOutcome::TxHash(hash) => println!("Transaction ID: {hash}"),
             }
         }
 
@@ -515,43 +509,26 @@ fn run(command: Commands) -> anyhow::Result<()> {
                 (None, Some(l)) => l,
                 _ => anyhow::bail!("provide either --ada or --lovelace"),
             };
-            if dry_run {
-                let cbor = ykada::api::build_transaction(
-                    payment_slot.into(),
-                    stake_slot.into(),
-                    network.into(),
-                    &to,
-                    send_lovelace,
-                    fee,
-                )
-                .context("failed to build transaction")?;
-                println!("{}", hex::encode(&cbor));
-            } else if only_sign {
-                let pin = pin.map(|p| p.parse::<Pin>()).transpose()?;
-                let cbor = ykada::api::sign_transaction(
-                    payment_slot.into(),
-                    stake_slot.into(),
-                    network.into(),
-                    &to,
-                    send_lovelace,
-                    fee,
-                    pin,
-                )
-                .context("failed to sign transaction")?;
-                println!("{}", hex::encode(&cbor));
-            } else {
-                let pin = pin.map(|p| p.parse::<Pin>()).transpose()?;
-                let tx_hash = ykada::api::send_transaction(
-                    payment_slot.into(),
-                    stake_slot.into(),
-                    network.into(),
-                    &to,
-                    send_lovelace,
-                    fee,
-                    pin,
-                )
-                .context("failed to sign and submit transaction")?;
-                println!("Transaction ID: {tx_hash}");
+            let pin = pin.map(|p| p.parse::<Pin>()).transpose()?;
+            let mode = match (dry_run, only_sign) {
+                (true, _) => SendMode::DryRun,
+                (_, true) => SendMode::SignOnly,
+                _ => SendMode::SignAndSubmit,
+            };
+            match ykada::api::send_ada(
+                payment_slot.into(),
+                stake_slot.into(),
+                network.into(),
+                &to,
+                send_lovelace,
+                fee,
+                mode,
+                pin,
+            )
+            .context("failed to send ADA")?
+            {
+                SendOutcome::Cbor(cbor) => println!("{}", hex::encode(&cbor)),
+                SendOutcome::TxHash(hash) => println!("Transaction ID: {hash}"),
             }
         }
     }
