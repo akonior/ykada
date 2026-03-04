@@ -45,6 +45,13 @@ impl Bech32Encodable for StakeVerifyingKey {
     }
 }
 
+pub fn decode_bech32_address(bech32_str: &str) -> Result<Vec<u8>, Bech32Error> {
+    let (_, data, _) =
+        bech32::decode(bech32_str).map_err(|e| Bech32Error(format!("decode error: {e}")))?;
+    bech32::convert_bits(&data, 5, 8, false)
+        .map_err(|e| Bech32Error(format!("convert_bits error: {e}")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,6 +125,20 @@ mod tests {
 
         let encoded = StakeVerifyingKey(verifying_key).to_bech32().unwrap();
         assert!(encoded.starts_with("stake_vk"), "got: {}", encoded);
+    }
+
+    #[test]
+    fn test_decode_bech32_address_valid() {
+        // Known testnet address — 57 bytes (header + 28 payment hash + 28 stake hash)
+        let addr = "addr_test1qrfw6ye0m7f2kvqapnkp7jzlfydq0h6j5rnsvj2wm9vlhg0y86x894xrsh5xu8qlm6yld03hp7sx6u552w6uupd799fqz0vpte";
+        let decoded = decode_bech32_address(addr).expect("should decode");
+        assert_eq!(decoded.len(), 57, "Cardano base address must be 57 bytes");
+    }
+
+    #[test]
+    fn test_decode_bech32_address_invalid() {
+        let result = decode_bech32_address("not_a_valid_bech32!!!");
+        assert!(result.is_err());
     }
 
     #[test]

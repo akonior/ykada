@@ -5,7 +5,7 @@ use pallas_txbuilder::{BuildConway, BuiltTransaction, Input, Output, StagingTran
 use tracing::{debug, info};
 
 use crate::error::{YkadaError, YkadaResult};
-use crate::logic::Bech32Encodable;
+use crate::logic::{select_inputs, Bech32Encodable};
 use crate::model::{Algorithm, CardanoAddress, Pin, Slot, Utxo};
 use crate::ports::{Signer, TipFetcher, TxSubmitter, UtxoFetcher};
 
@@ -204,33 +204,6 @@ fn build_staged(
                 .fee(params.fee_lovelace)
                 .invalid_from_slot(tip_slot + 7200)
         })
-}
-
-/// Largest-first greedy coin selection.
-/// Returns indices into `utxos` (sorted by descending lovelace) and the total lovelace selected.
-fn select_inputs(utxos: &[Utxo], required: u64) -> YkadaResult<(Vec<usize>, u64)> {
-    let mut indices: Vec<usize> = (0..utxos.len()).collect();
-    indices.sort_by(|&a, &b| utxos[b].lovelace.cmp(&utxos[a].lovelace));
-
-    let (selected, total) = indices.into_iter().try_fold(
-        (vec![], 0u64),
-        |(mut acc, sum), i| -> YkadaResult<(Vec<usize>, u64)> {
-            if sum >= required {
-                Ok((acc, sum))
-            } else {
-                acc.push(i);
-                Ok((acc, sum + utxos[i].lovelace))
-            }
-        },
-    )?;
-
-    if total < required {
-        return Err(YkadaError::NetworkError(format!(
-            "insufficient funds: have {total} lovelace, need {required}"
-        )));
-    }
-
-    Ok((selected, total))
 }
 
 fn parse_tx_hash(hex_str: &str) -> YkadaResult<Hash<32>> {

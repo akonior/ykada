@@ -1,5 +1,5 @@
 use anyhow::Context;
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use clap_verbosity_flag::{Verbosity, WarnLevel};
 use std::io::{self, Read, Write};
 use tracing::info;
@@ -15,13 +15,13 @@ use ykada::{
 #[derive(Parser, Debug)]
 #[command(name = "ykada")]
 #[command(about = "YubiKey Cardano wallet", version)]
-#[command(subcommand_required = false, arg_required_else_help = false)]
+#[command(arg_required_else_help = true)]
 pub struct Cli {
     #[command(flatten)]
     pub verbosity: Verbosity<WarnLevel>,
 
     #[command(subcommand)]
-    pub command: Option<Commands>,
+    pub command: Commands,
 }
 
 #[derive(Subcommand, Debug)]
@@ -264,19 +264,11 @@ fn print_error(e: &anyhow::Error) {
     }
 }
 
-fn print_banner() {
-    use std::io::IsTerminal;
-    if !std::io::stdout().is_terminal() {
-        return;
-    }
-    println!("\x1b[1;32m  ╻ ╻╻┏ ┏━┓╺┳┓┏━┓\x1b[0m");
-    println!("\x1b[1;32m  ┗┳┛┣┻┓┣━┫ ┃┃┣━┫\x1b[0m");
-    println!("\x1b[1;32m   ╹ ╹ ╹╹ ╹╺┻┛╹ ╹\x1b[0m  \x1b[1;37mYubiKey Cardano Wallet\x1b[0m");
-    println!();
-}
-
 fn main() {
-    let cli = Cli::parse();
+    let matches = Cli::command()
+        .before_long_help(ykada::api::banner())
+        .get_matches();
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
 
     tracing_subscriber::fmt()
         .with_max_level(cli.verbosity)
@@ -285,12 +277,7 @@ fn main() {
         .with_level(true)
         .init();
 
-    let command = cli.command.unwrap_or(Commands::Info {
-        payment_slot: SlotArg::Signature,
-        stake_slot: SlotArg::KeyManagement,
-        network: NetworkArg::Preview,
-    });
-    if let Err(e) = run(command) {
+    if let Err(e) = run(cli.command) {
         print_error(&e);
         std::process::exit(1);
     }
@@ -425,7 +412,6 @@ fn run(command: Commands) -> anyhow::Result<()> {
             stake_slot,
             network,
         } => {
-            print_banner();
             let info =
                 ykada::api::wallet_info(payment_slot.into(), stake_slot.into(), network.into())?;
 

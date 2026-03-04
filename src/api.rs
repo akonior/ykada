@@ -1,6 +1,6 @@
 use crate::adapters::{KoiosClient, PivDeviceFinder};
 use crate::error::{YkadaError, YkadaResult};
-pub use crate::logic::{Bech32Encodable, Bech32Error, StakeVerifyingKey};
+pub use crate::logic::{banner, Bech32Encodable, Bech32Error, StakeVerifyingKey};
 pub use crate::model::*;
 use crate::ports::{DeviceFinder, KeyConfig};
 use crate::use_cases::{
@@ -77,7 +77,7 @@ pub fn build_transaction(
         YkadaError::NetworkError("no address on YubiKey — import a wallet first".into())
     })?;
 
-    let recipient_bytes = decode_bech32_address(recipient)?;
+    let recipient_bytes = decode_bech32(recipient)?;
     let client = KoiosClient::for_network(network);
 
     build_transaction_use_case(
@@ -111,7 +111,7 @@ pub fn sign_transaction(
             YkadaError::NetworkError("no payment key on YubiKey — import a wallet first".into())
         })?
         .to_bytes();
-    let recipient_address_bytes = decode_bech32_address(recipient)?;
+    let recipient_address_bytes = decode_bech32(recipient)?;
     let client = KoiosClient::for_network(network);
     let finder = PivDeviceFinder;
     let mut yubikey = finder.find_first()?;
@@ -150,7 +150,7 @@ pub fn send_transaction(
             YkadaError::NetworkError("no payment key on YubiKey — import a wallet first".into())
         })?
         .to_bytes();
-    let recipient_address_bytes = decode_bech32_address(recipient)?;
+    let recipient_address_bytes = decode_bech32(recipient)?;
     let client = KoiosClient::for_network(network);
     let finder = PivDeviceFinder;
     let mut yubikey = finder.find_first()?;
@@ -171,11 +171,9 @@ pub fn send_transaction(
     )
 }
 
-fn decode_bech32_address(bech32_str: &str) -> YkadaResult<Vec<u8>> {
-    let (_, data, _) = bech32::decode(bech32_str)
-        .map_err(|e| YkadaError::NetworkError(format!("invalid bech32 address: {e}")))?;
-    bech32::convert_bits(&data, 5, 8, false)
-        .map_err(|e| YkadaError::NetworkError(format!("bech32 conversion error: {e}")))
+fn decode_bech32(bech32_str: &str) -> YkadaResult<Vec<u8>> {
+    crate::logic::decode_bech32_address(bech32_str)
+        .map_err(|e| YkadaError::NetworkError(e.to_string()))
 }
 
 pub fn import_private_key_from_seed_phrase(
