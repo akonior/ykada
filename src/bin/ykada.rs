@@ -472,7 +472,7 @@ fn main() -> anyhow::Result<()> {
                     pin,
                 )
                 .context("failed to sign and submit transaction")?;
-                println!("{tx_hash}");
+                println!("Transaction ID: {tx_hash}");
             } else {
                 let cbor = ykada::api::sign_external_tx(
                     &content,
@@ -509,7 +509,7 @@ fn main() -> anyhow::Result<()> {
                     pin,
                 )
                 .context("failed to sign and submit transaction")?;
-                println!("{tx_hash}");
+                println!("Transaction ID: {tx_hash}");
             } else if sign {
                 let pin = pin.map(|p| p.parse::<Pin>()).transpose()?;
                 let cbor = ykada::api::sign_transaction(
