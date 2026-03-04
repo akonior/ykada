@@ -1,198 +1,236 @@
-# Yubikey Cardano Wallet
-Open-source tool enabling Cardano private key storage on YubiKey and secure signing of Cardano transactions.
+# ykada
 
-## Building and Running
+> [!CAUTION]
+> **Proof of concept — do not use with real funds.**
+>
+> This software is experimental and has not been security-audited. Key derivation, PIV integration, and transaction signing are research-grade implementations that have not undergone independent security review. The software is provided "as is", without warranty of any kind, express or implied. **Do not run on mainnet or with funds you cannot afford to lose.**
 
-To build the project, run:
+Hardware wallet for Cardano using YubiKey. Private keys never leave the device.
 
-```sh
-cargo build
-```
+Ykada stores Ed25519 signing keys on a YubiKey's PIV slots and uses them to sign Cardano transactions — keeping your keys offline and protected by PIN and physical touch.
 
-To run the YubiKey Cardano wallet tool, use:
-
-```sh
-cargo run --quiet --bin ykada
-```
-
-## Installation
-
-You can install the YubiKey Cardano wallet CLI globally using [cargo](https://doc.rust-lang.org/cargo/):
+## Install
 
 ```sh
 cargo install --path . --locked
 ```
 
-![Installation Demo](docs/gif/installation.gif)
+Requires a YubiKey 5 series (firmware 5.7+) with Ed25519 support.
 
+## Quick Start
 
-This will build and install the `ykada` binary into your Cargo bin directory (typically `~/.cargo/bin`). Make sure this directory is in your `PATH` to run `ykada` from anywhere.
-
-When you run `ykada`, you should see output similar to the following:
+**1. Generate a wallet**
 
 ```
-YubiKey Cardano wallet
-
-Usage: ykada [OPTIONS] <COMMAND>
-
-Commands:
-  import-key  Import a private key into the YubiKey
-  sign        Sign data using the YubiKey
-  generate    Generate a new key in the YubiKey
-  help        Print this message or the help of the given subcommand(s)
-
-Options:
-  -v, --verbose...  Increase logging verbosity
-  -q, --quiet...    Decrease logging verbosity
-  -h, --help        Print help
-  -V, --version     Print version
+$ ykada generate
+Mnemonic (store safely): express crime shrimp theory sword always search orbit present spoil glory ribbon foam juice ten isolate armed buffalo perfect mobile dial box notice regret
+Cardano address:         addr_test1qphwrxw2kcu4kasezlh5hxnulvha9ufqs55d7tw0jhvv696d9egjx7sqp0tlfh300e4wn88s4r333yl0reu2njwtqy3qm5zq89
 ```
 
-## Key Generation on YubiKey
+Write down the 24-word mnemonic and store it safely. It is the only backup of your wallet.
 
-You can generate a new Ed25519 key directly inside your YubiKey, ensuring the private key never leaves the device.
+**2. Check your balance**
 
-### Command
+```
+$ ykada balance
+Cardano address:  addr_test1qphwrxw2kcu4kasezlh5hxnulvha9ufqs55d7tw0jhvv696d9egjx7sqp0tlfh300e4wn88s4r333yl0reu2njwtqy3qm5zq89
+Account balance:
+  ADA:            0.000000
+```
+
+**3. Send ADA**
+
+```
+$ ykada send --ada 1 --to addr_test1qzsmxwwte2fw6cla5d4c725f3wkmth9k4ds923lgjq6vey0uxtmw20nuadt9qv2ak6adgskdtp3j6jx7xp39gs9wa5hs0z854g
+Transaction ID: 8f7334094b3c4df2fc5eee892865c4175841da390fe77a4bbfd94b633085d58e
+```
+
+## Commands
+
+### `ykada info`
+
+Show connected YubiKey device info and wallet address.
+
+```
+$ ykada info
+YubiKey serial:          27257069
+Firmware version:        5.7.4
+Payment slot:            signature
+Payment derivation path: m/1852'/1815'/0'/0/0
+Stake slot:              key-management
+Stake derivation path:   m/1852'/1815'/0'/2/0
+Cardano address:         addr_test1qzsm...
+```
+
+### `ykada generate`
+
+Create a new wallet: generates a random 24-word BIP39 mnemonic, derives payment and stake keys (CIP-1852), and stores them on the YubiKey.
+
+```
+$ ykada generate
+Mnemonic (store safely): express crime shrimp theory sword always search orbit present spoil glory ribbon foam juice ten isolate armed buffalo perfect mobile dial box notice regret
+Cardano address:         addr_test1qphwrxw2kcu4kasezlh5hxnulvha9ufqs55d7tw0jhvv696d9egjx7sqp0tlfh300e4wn88s4r333yl0reu2njwtqy3qm5zq89
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--network` | `preview` | `mainnet`, `preprod`, or `preview` |
+| `--pin-policy` | `always` | When PIN is required: `never`, `once`, `always` |
+| `--touch-policy` | `always` | When physical touch is required: `never`, `always`, `cached` |
+| `--payment-slot` | `signature` | YubiKey PIV slot for payment key |
+| `--stake-slot` | `key-management` | YubiKey PIV slot for stake key |
+| `--mgmt-key` | — | YubiKey management key (hex) |
+
+### `ykada import`
+
+Restore a wallet from an existing BIP39 seed phrase. Derives the same payment and stake keys and stores them on the YubiKey.
+
+```
+$ ykada import --seed "slim fine attend tape wave input head crew shift desk find mutual square cake uncle morning provide naive around brief couple faint alcohol young"
+Mnemonic (store safely): slim fine attend tape wave input head crew shift desk find mutual square cake uncle morning provide naive around brief couple faint alcohol young
+Cardano address:         addr_test1qzsmxwwte2fw6cla5d4c725f3wkmth9k4ds923lgjq6vey0uxtmw20nuadt9qv2ak6adgskdtp3j6jx7xp39gs9wa5hs0z854g
+```
+
+Accepts the same options as `generate` (`--network`, `--pin-policy`, `--touch-policy`, `--payment-slot`, `--stake-slot`, `--mgmt-key`).
+
+| Option | Default | Description |
+|---|---|---|
+| `--seed` | *(required)* | 24-word BIP39 mnemonic |
+
+### `ykada balance`
+
+Query on-chain ADA and native token balances for the wallet on the connected YubiKey.
+
+```
+$ ykada balance
+Cardano address:  addr_test1qzsmxwwte2fw6cla5d4c725f3wkmth9k4ds923lgjq6vey0uxtmw20nuadt9qv2ak6adgskdtp3j6jx7xp39gs9wa5hs0z854g
+Account balance:
+  ADA:            91.020067
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--network` | `preview` | Network to query |
+
+### `ykada send`
+
+Build, sign, and submit a simple ADA transfer.
+
+```
+$ ykada send --ada 5 --to addr_test1qr...
+Transaction ID: f9a03b8d...
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--to` | *(required)* | Recipient address (bech32) |
+| `--ada` | — | Amount in ADA (whole units) |
+| `--lovelace` | — | Amount in lovelace (1 ADA = 1,000,000 lovelace) |
+| `--fee` | `200000` | Transaction fee in lovelace |
+| `--network` | `preview` | Network to submit to |
+| `--pin` | — | YubiKey PIN (prompted if needed) |
+| `--dry-run` | — | Build unsigned transaction only (CBOR hex) |
+| `--only-sign` | — | Sign but don't submit (CBOR hex) |
+
+Specify either `--ada` or `--lovelace`, not both.
+
+### `ykada sign-tx`
+
+Sign a pre-built transaction exported from an external wallet (e.g. Eternl, `cardano-cli`).
+
+```
+$ ykada sign-tx --tx-file unsigned.json
+84a400...signed-cbor-hex...
+
+$ ykada sign-tx --tx-file unsigned.json --send
+Transaction ID: f9a03b8d...
+```
+
+The transaction file must contain a `cborHex` field with the unsigned transaction.
+
+| Option | Default | Description |
+|---|---|---|
+| `--tx-file` | *(required)* | Path to unsigned transaction JSON |
+| `--send` | — | Submit to the network after signing |
+| `--network` | `preview` | Network for submission |
+| `--pin` | — | YubiKey PIN |
+
+## Workflows
+
+### Generate and fund (testnet)
 
 ```sh
-ykada generate [OPTIONS]
+ykada generate --network preview
+# Copy the address and request tADA from the Cardano testnet faucet
+ykada balance
 ```
 
-### Options
-
-| Option                       | Description                                                                                         | Default            | Possible Values                                                    |
-|------------------------------|-----------------------------------------------------------------------------------------------------|--------------------|--------------------------------------------------------------------|
-| `--slot <SLOT>`              | Selects the YubiKey slot for the new key.                                                          | `signature`        | authentication, signature, key-management, card-authentication     |
-| `--pin-policy <PIN_POLICY>`  | Sets when PIN entry is required (e.g. for signing/using the key).                                  | `always`           | never, once, always                                                |
-| `--touch-policy <TOUCH_POLICY>` | Controls when physical touch on YubiKey is required (for signing/using the key).                 | `always`           | never, always, cached                                              |
-| `--mgmt-key <MGMT_KEY>`      | Optionally provide a custom management key for key operations.                                     |                    |                                                                    |
-| `-v`, `--verbose`            | Increase logging verbosity.                                                                         |                    |                                                                    |
-| `-q`, `--quiet`              | Decrease logging verbosity.                                                                         |                    |                                                                    |
-| `-h`, `--help`               | Print help message.                                                                                |                    |                                                                    |
-
-### Example
-
-Generate a new key in the *signature* slot with default policies:
+### Restore existing wallet
 
 ```sh
-ykada generate
+ykada import --seed "slim fine attend tape wave input head crew shift desk find mutual square cake uncle morning provide naive around brief couple faint alcohol young"
+ykada balance
 ```
 
-![Generate Demo](docs/gif/generate.gif)
+### Sign a transaction from Eternl
 
-Or, generate a key for authentication that only requires PIN verification once, and requires a touch:
+1. Create a transaction in [Eternl](https://eternl.io) and export the unsigned transaction JSON.
+2. Sign with your YubiKey:
 
 ```sh
-ykada generate --slot authentication --pin-policy once --touch-policy always
+ykada sign-tx --tx-file eternl-tx.json --send --network preview
 ```
 
-**Note:**  
-- The new key will be stored securely in the selected slot. The public key will be displayed on success.
-
-For more advanced usage and supported features, see:
+### Inspect before sending
 
 ```sh
-ykada generate --help
+# Build without signing
+ykada send --ada 10 --to addr_test1qr... --dry-run
+
+# Sign without submitting
+ykada send --ada 10 --to addr_test1qr... --only-sign
+
+# Full send
+ykada send --ada 10 --to addr_test1qr...
 ```
 
-## Importing an Existing Private Key
+## Security Model
 
-You can import an existing Ed25519 private key into your YubiKey using the `import-key` command. This is useful for migrating keys generated elsewhere, restoring wallets, or specifying custom keys for Cardano signing.
+Ykada relies on YubiKey's hardware security for all private key operations:
 
-### Usage
+- **Keys never leave the YubiKey.** Generation, import, and signing all happen on-device. The YubiKey stores Ed25519 keys in PIV slots and performs signing internally.
+- **PIN protection.** By default (`--pin-policy always`), every signing operation requires your YubiKey PIN.
+- **Physical touch.** By default (`--touch-policy always`), signing requires you to physically touch the YubiKey — preventing remote exploitation even if your PIN is compromised.
+- **Standard derivation path.** Keys follow CIP-1852 (Cardano Icarus derivation). The derivation path is standard, but see the note below on address compatibility.
+
+> **Address compatibility note.** Standard Cardano wallets (Yoroi, Eternl, cardano-cli) treat the derived extended private key's left 32 bytes (kL) directly as an Ed25519 scalar when computing the public key (`kL·G`). YubiKey PIV requires a 32-byte seed for Ed25519 import; ykada imports kL as that seed, after which the firmware applies an additional SHA-512 hash to derive the actual scalar (`SHA-512(kL)[0:32]·G`). Because the extra hash changes the scalar, the public key — and therefore the Cardano address — produced by ykada will differ from the address any standard wallet derives from the same mnemonic. The address is fully usable on-chain; it just cannot be recovered by another wallet from the same seed phrase.
+
+## Networks
+
+| Network | Address prefix | Use |
+|---|---|---|
+| `mainnet` | `addr1...` | Real ADA |
+| `preprod` | `addr_test1...` | Long-running testnet |
+| `preview` | `addr_test1...` | Fast-moving testnet (default) |
+
+## Building from Source
 
 ```sh
-ykada import-key [OPTIONS]
+git clone https://github.com/akonior/ykada.git
+cd ykada
+cargo build --release
 ```
 
-### Options
-
-| Option                           | Description                                                                                           | Default Value | Possible Values                                                  |
-|---------------------------------- |-------------------------------------------------------------------------------------------------------|---------------|------------------------------------------------------------------|
-| `--slot <SLOT>`                  | Selects YubiKey slot where key will be imported.                                                       | `signature`   | authentication, signature, key-management, card-authentication   |
-| `--pin-policy <PIN_POLICY>`      | Sets when PIN entry is required for key usage.                                                         | `always`      | never, once, always                                              |
-| `--touch-policy <TOUCH_POLICY>`  | Requires physical touch on YubiKey for key usage.                                                      | `always`      | never, always, cached                                            |
-| `--mgmt-key <MGMT_KEY>`          | Optionally provide a custom management key for administrative actions.                                 |               |                                                                  |
-| `--seed <SEED>`                  | BIP-39 compatible seed phrase for key derivation (import from seed).                                   |               |                                                                  |
-| `--passphrase <PASSPHRASE>`      | Optional passphrase to use with seed phrase (used with `--seed`).                                      | *(empty)*     |                                                                  |
-| `--path <PATH>`                  | BIP-32 derivation path (used with seed phrase).                                                        |               |                                                                  |
-| `-v`, `--verbose`                | Increase logging verbosity.                                                                            |               |                                                                  |
-| `-q`, `--quiet`                  | Decrease logging verbosity.                                                                            |               |                                                                  |
-| `-h`, `--help`                   | Print help message.                                                                                   |               |                                                                  |
-
-By default, if no seed is given, the key material is read from standard input as a DER-encoded (PKCS#8) Ed25519 private key.
-
-### Import from Seed Phrase (BIP-39):
-
-Import a key derived from a BIP-39 seed phrase into your YubiKey in the authentication slot:
+### Run tests
 
 ```sh
-ykada import-key --seed "spirit supply whale amount human item harsh scare congress discover talent hamster" --slot authentication
-```
-
-Optionally, use a passphrase and a custom derivation path:
-
-```sh
-ykada import-key --seed "spirit supply whale ..." --passphrase "extra entropy" --path "m/1852'/1815'/0'/0/0" --slot signature
-```
-
-![Import from seed Demo](docs/gif/import-seed.gif)
-
-### Import from DER-encoded Key:
-
-To import a DER-encoded Ed25519 private key from a file:
-
-```sh
-cat mykey.der | ykada import-key --slot signature
-```
-
-![Import DER Demo](docs/gif/import-der.gif)
-
-You may combine with other options to set PIN/touch policies or management key as needed.
-
-**Note:**
-- Supplying the wrong key type or an improperly formatted file may cause the import to fail.
-
-For further information or additional help:
-
-```sh
-ykada import-key --help
-```
-
-
-
-## Testing
-
-### Unit Tests (No Hardware Required)
-
-Run unit tests (including mock tests):
-
-```sh
+# Unit tests (no hardware required)
 cargo test --lib --bins
+
+# Hardware tests (requires connected YubiKey)
+cargo test --lib --features hardware-tests
 ```
 
-### Hardware Tests (Requires YubiKey)
+## License
 
-Hardware tests are ignored by default. To run them, enable the `hardware-tests` feature flag:
-
-```sh
-# Run all hardware tests
-cargo test --lib yubikey::piv --features hardware-tests
-
-# Or use the helper script
-./scripts/test-hardware.sh
-
-# Run a specific hardware test
-cargo test --lib test_pin_verification_success --features hardware-tests
-
-# Run specific test by full path
-cargo test --lib yubikey::piv::tests::test_pin_verification_success --features hardware-tests
-```
-
-**Note**: Hardware tests require:
-- A YubiKey device connected to your computer
-- The default PIN (usually `123456`) or your configured PIN
-- Physical touch confirmation if Touch Policy is enabled
-
-**How it works**: Tests are conditionally ignored using `#[cfg_attr(not(feature = "hardware-tests"), ignore)]`. 
-Without the feature flag, tests are ignored. With `--features hardware-tests`, they run normally.
+Apache 2.0

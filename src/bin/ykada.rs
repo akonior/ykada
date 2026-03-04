@@ -2,7 +2,7 @@ use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
 use clap_verbosity_flag::{Verbosity, WarnLevel};
 use std::io::{self, Read, Write};
-use tracing::error;
+use tracing::{error, info};
 
 use ykada::{
     api::{
@@ -132,19 +132,22 @@ pub enum Commands {
     },
 
     #[command(
-        about = "Build an ADA transfer transaction",
-        long_about = "Build an ADA transfer transaction.\n\n\
-            By default outputs unsigned CBOR hex.\n\
-            Use --sign to sign via YubiKey and output signed CBOR hex.\n\
-            Use --send to sign via YubiKey and submit to the network, printing the tx hash."
+        about = "Send ADA to a Cardano address",
+        long_about = "Send ADA to a Cardano address.\n\n\
+            By default signs via YubiKey and submits to the network.\n\
+            Use --dry-run to build the unsigned transaction (CBOR hex) without signing.\n\
+            Use --only-sign to sign but not submit (outputs signed CBOR hex)."
     )]
-    BuildTx {
+    Send {
         /// Recipient bech32 address
         #[arg(long)]
         to: String,
-        /// Amount to send in lovelace (1 ADA = 1_000_000 lovelace)
-        #[arg(long)]
-        lovelace: u64,
+        /// Amount to send in whole ADA (e.g. 2 = 2 000 000 lovelace)
+        #[arg(long, conflicts_with = "lovelace")]
+        ada: Option<u64>,
+        /// Amount to send in lovelace (exact; use instead of --ada for sub-ADA precision)
+        #[arg(long, conflicts_with = "ada")]
+        lovelace: Option<u64>,
         /// Transaction fee in lovelace
         #[arg(long, default_value = "200000")]
         fee: u64,
@@ -154,13 +157,13 @@ pub enum Commands {
         stake_slot: SlotArg,
         #[arg(long, default_value = "preview")]
         network: NetworkArg,
-        /// Sign the transaction with the YubiKey and output signed CBOR hex (without submitting)
-        #[arg(long, conflicts_with = "send")]
-        sign: bool,
-        /// Sign the transaction with the YubiKey and submit it to the network (outputs tx hash)
-        #[arg(long, conflicts_with = "sign")]
-        send: bool,
-        /// YubiKey PIN (required if the key slot uses PIN-on-sign policy)
+        /// Build the unsigned transaction only; do not sign or submit
+        #[arg(long, conflicts_with = "only_sign")]
+        dry_run: bool,
+        /// Sign but do not submit; outputs signed CBOR hex
+        #[arg(long, conflicts_with = "dry_run")]
+        only_sign: bool,
+        /// YubiKey PIN
         #[arg(long)]
         pin: Option<String>,
     },
@@ -251,6 +254,15 @@ impl From<NetworkArg> for Network {
     }
 }
 
+fn slot_name(slot: SlotArg) -> &'static str {
+    match slot {
+        SlotArg::Authentication => "authentication",
+        SlotArg::Signature => "signature",
+        SlotArg::KeyManagement => "key-management",
+        SlotArg::CardAuthentication => "card-authentication",
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
@@ -283,11 +295,11 @@ fn main() -> anyhow::Result<()> {
             let wallet = ykada::import_wallet(seed_phrase, config, mgmt_key_opt.as_ref())
                 .context("failed to import wallet from seed phrase")?;
             println!("Mnemonic (store safely): {}", wallet.mnemonic.phrase());
-            println!(
+            info!(
                 "Payment verifying key:   {}",
                 wallet.payment_vk.to_bech32()?
             );
-            println!(
+            info!(
                 "Stake verifying key:     {}",
                 StakeVerifyingKey(wallet.stake_vk).to_bech32()?
             );
@@ -363,11 +375,11 @@ fn main() -> anyhow::Result<()> {
                 None => ykada::generate_wallet(config, mgmt_key_opt.as_ref())?,
             };
             println!("Mnemonic (store safely): {}", wallet.mnemonic.phrase());
-            println!(
+            info!(
                 "Payment verifying key:   {}",
                 wallet.payment_vk.to_bech32()?
             );
-            println!(
+            info!(
                 "Stake verifying key:     {}",
                 StakeVerifyingKey(wallet.stake_vk).to_bech32()?
             );
@@ -406,17 +418,21 @@ fn main() -> anyhow::Result<()> {
             let (major, minor, patch) = info.firmware;
             println!("YubiKey serial:          {}", info.serial);
             println!("Firmware version:        {}.{}.{}", major, minor, patch);
+            println!("Payment slot:            {}", slot_name(payment_slot));
+            println!("Payment derivation path: m/1852'/1815'/0'/0/0");
+            println!("Stake slot:              {}", slot_name(stake_slot));
+            println!("Stake derivation path:   m/1852'/1815'/0'/2/0");
 
             match info.payment_vk {
-                Some(vk) => println!("Payment verifying key:   {}", vk.to_bech32()?),
-                None => println!("Payment verifying key:   (none)"),
+                Some(vk) => info!("Payment verifying key:   {}", vk.to_bech32()?),
+                None => info!("Payment verifying key:   (none)"),
             }
             match info.stake_vk {
-                Some(vk) => println!(
+                Some(vk) => info!(
                     "Stake verifying key:     {}",
                     StakeVerifyingKey(vk).to_bech32()?
                 ),
-                None => println!("Stake verifying key:     (none)"),
+                None => info!("Stake verifying key:     (none)"),
             }
             if let Some(addr) = info.address {
                 println!("Cardano address:         {}", addr.to_bech32()?)
@@ -486,54 +502,60 @@ fn main() -> anyhow::Result<()> {
             }
         }
 
-        Commands::BuildTx {
+        Commands::Send {
             to,
+            ada,
             lovelace,
             fee,
             payment_slot,
             stake_slot,
             network,
-            sign,
-            send,
+            dry_run,
+            only_sign,
             pin,
         } => {
-            if send {
-                let pin = pin.map(|p| p.parse::<Pin>()).transpose()?;
-                let tx_hash = ykada::api::send_transaction(
+            let send_lovelace = match (ada, lovelace) {
+                (Some(a), None) => a * 1_000_000,
+                (None, Some(l)) => l,
+                _ => anyhow::bail!("provide either --ada or --lovelace"),
+            };
+            if dry_run {
+                let cbor = ykada::api::build_transaction(
                     payment_slot.into(),
                     stake_slot.into(),
                     network.into(),
                     &to,
-                    lovelace,
+                    send_lovelace,
                     fee,
-                    pin,
                 )
-                .context("failed to sign and submit transaction")?;
-                println!("Transaction ID: {tx_hash}");
-            } else if sign {
+                .context("failed to build transaction")?;
+                println!("{}", hex::encode(&cbor));
+            } else if only_sign {
                 let pin = pin.map(|p| p.parse::<Pin>()).transpose()?;
                 let cbor = ykada::api::sign_transaction(
                     payment_slot.into(),
                     stake_slot.into(),
                     network.into(),
                     &to,
-                    lovelace,
+                    send_lovelace,
                     fee,
                     pin,
                 )
                 .context("failed to sign transaction")?;
                 println!("{}", hex::encode(&cbor));
             } else {
-                let cbor = ykada::api::build_transaction(
+                let pin = pin.map(|p| p.parse::<Pin>()).transpose()?;
+                let tx_hash = ykada::api::send_transaction(
                     payment_slot.into(),
                     stake_slot.into(),
                     network.into(),
                     &to,
-                    lovelace,
+                    send_lovelace,
                     fee,
+                    pin,
                 )
-                .context("failed to build transaction")?;
-                println!("{}", hex::encode(&cbor));
+                .context("failed to sign and submit transaction")?;
+                println!("Transaction ID: {tx_hash}");
             }
         }
     }
