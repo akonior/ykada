@@ -1,4 +1,4 @@
-# ykada
+# Yubikey Cardano Wallet
 
 > [!CAUTION]
 > **Proof of concept — do not use with real funds.**
