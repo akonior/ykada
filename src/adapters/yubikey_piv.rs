@@ -29,14 +29,17 @@ impl DeviceFinder for PivDeviceFinder {
     fn find_first(&self) -> YkadaResult<Self::Device> {
         let mut readers = Context::open()?;
 
-        for reader in readers.iter()? {
-            if let Ok(yk) = reader.open() {
-                debug!("Connected to YubiKey: {:?}", reader.name());
-                return Ok(PivYubiKey::new(yk));
-            }
-        }
+        let devices: Vec<YubiKey> = readers.iter()?.filter_map(|r| r.open().ok()).collect();
 
-        Err(YkadaError::NotFound)
+        match devices.len() {
+            0 => Err(YkadaError::NotFound),
+            1 => {
+                let yk = devices.into_iter().next().expect("length checked above");
+                debug!("Connected to YubiKey serial={}", yk.serial());
+                Ok(PivYubiKey::new(yk))
+            }
+            count => Err(YkadaError::MultipleDevicesFound { count }),
+        }
     }
 }
 
