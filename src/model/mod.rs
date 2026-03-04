@@ -21,7 +21,7 @@ pub use cardano_address::CardanoAddress;
 pub use cardano_key::{CardanoKey, CardanoKeyError};
 pub use derivation_path::{DerivationPath, DerivationPathError};
 pub use generated_wallet::GeneratedWallet;
-pub use key_material::{DerPrivateKey, Ed25519PrivateKey, KeyMaterialError};
+pub use key_material::{DerPrivateKey, KeyMaterialError};
 pub use mgmt_key::{ManagementKey, ManagementKeyError};
 pub use network::Network;
 pub use pin::{Pin, PinError};

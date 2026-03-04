@@ -87,14 +87,14 @@ macro_rules! run_yubikey_contract_tests {
 
 #[cfg(test)]
 pub mod yubikey_contract {
-    use ed25519_dalek::{SecretKey, SigningKey, VerifyingKey};
+    use ed25519_dalek::{SigningKey, VerifyingKey};
 
     use std::str::FromStr;
 
     use crate::{
         model::{Algorithm, ManagementKey, Pin, Slot, TouchPolicy},
         ports::{KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer},
-        CardanoKey, DerivationPath, Ed25519PrivateKey, SeedPhrase, YkadaError,
+        CardanoKey, DerivationPath, SeedPhrase, YkadaError,
     };
 
     const TESTING_MANAGEMENT_KEY: ManagementKey = ManagementKey::new([
@@ -141,11 +141,11 @@ pub mod yubikey_contract {
     }
 
     pub(crate) fn test_import_key_fail_not_authenticated(mut device: impl KeyManager) {
-        let secret_key = Ed25519PrivateKey::from([0u8; 32]);
-        let vk: VerifyingKey = SigningKey::from_bytes(&[0u8; 32]).verifying_key();
+        let signing_key = SigningKey::from_bytes(&[0u8; 32]);
+        let vk: VerifyingKey = signing_key.verifying_key();
         let config = KeyConfig::default();
 
-        let result = device.import_key(secret_key, vk, config.clone());
+        let result = device.import_key(signing_key, vk, config.clone());
         let error = result.unwrap_err();
 
         assert!(
@@ -163,11 +163,11 @@ pub mod yubikey_contract {
             .authenticate(Some(&TESTING_MANAGEMENT_KEY))
             .expect("Authentication failed");
 
-        let secret_key = Ed25519PrivateKey::from([0u8; 32]);
-        let vk: VerifyingKey = SigningKey::from_bytes(&[0u8; 32]).verifying_key();
+        let signing_key = SigningKey::from_bytes(&[0u8; 32]);
+        let vk: VerifyingKey = signing_key.verifying_key();
         let config = KeyConfig::default();
 
-        let result = device.import_key(secret_key, vk, config.clone());
+        let result = device.import_key(signing_key, vk, config.clone());
 
         assert!(result.is_ok(), "error: {:?}", result.err());
     }
@@ -206,17 +206,15 @@ pub mod yubikey_contract {
             .authenticate(Some(&TESTING_MANAGEMENT_KEY))
             .expect("Authentication failed");
 
-        let secret_bytes = [0u8; 32];
-        let signing_key = SigningKey::from_bytes(&SecretKey::from(secret_bytes));
+        let signing_key = SigningKey::from_bytes(&[0u8; 32]);
         let verifying_key = signing_key.verifying_key();
-        let secret_key = Ed25519PrivateKey::from(*signing_key.as_bytes());
 
         let config = KeyConfig {
             touch_policy: TouchPolicy::Never,
             ..Default::default()
         };
 
-        let result = device.import_key(secret_key, verifying_key, config.clone());
+        let result = device.import_key(signing_key, verifying_key, config.clone());
 
         assert!(result.is_ok(), "error: {:?}", result.err());
 

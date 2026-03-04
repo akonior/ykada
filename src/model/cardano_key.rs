@@ -1,10 +1,10 @@
 use ed25519_bip32::{DerivationScheme, XPrv};
-use ed25519_dalek::VerifyingKey;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use pbkdf2::pbkdf2_hmac;
 use sha2::Sha512;
 use thiserror::Error;
 
-use crate::model::{DerivationPath, Ed25519PrivateKey, SeedPhrase};
+use crate::model::{DerivationPath, SeedPhrase};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CardanoKey(XPrv);
@@ -39,11 +39,11 @@ impl CardanoKey {
         VerifyingKey::from_bytes(&arr).expect("XPub public_key_bytes() is a valid Ed25519 point")
     }
 
-    pub fn private_key(&self) -> Ed25519PrivateKey {
+    pub fn private_key(&self) -> SigningKey {
         let extended_secret = self.0.extended_secret_key_bytes();
         let mut k_l = [0u8; 32];
         k_l.copy_from_slice(&extended_secret[..32]);
-        Ed25519PrivateKey::from(k_l)
+        SigningKey::from_bytes(&k_l)
     }
 }
 

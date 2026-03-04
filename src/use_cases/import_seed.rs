@@ -30,8 +30,8 @@ where
         slot, derivation_path
     );
 
-    // derive_key_pair returns (kL, kL*G) — the Cardano private key and its verifying key.
-    let (private_key, cardano_vk) = derive_key_pair(&seed, passphrase, &derivation_path)?;
+    let private_key = derive_key_pair(&seed, passphrase, &derivation_path)?;
+    let cardano_vk = private_key.verifying_key();
     debug!(
         "Derived private key: {}",
         hex::encode(private_key.as_bytes())

@@ -1,23 +1,20 @@
 use crate::model::{CardanoKey, DerivationPath, SeedPhrase};
-use crate::{Ed25519PrivateKey, YkadaResult};
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use crate::YkadaResult;
+use ed25519_dalek::SigningKey;
 
 pub fn derive_key_pair(
     seed: &SeedPhrase,
     passphrase: &str,
     path: &DerivationPath,
-) -> YkadaResult<(Ed25519PrivateKey, VerifyingKey)> {
+) -> YkadaResult<SigningKey> {
     let root = CardanoKey::from_seed_phrase(seed, passphrase)?;
-    let derived = root.derive(path);
-    let private_key = derived.private_key();
     // Both the real YubiKey (import_cv_key) and FakeYubiKey.sign() treat the imported
     // kL bytes as an Ed25519 seed (RFC 8032): they internally expand via SHA-512 and
     // sign with SHA512_clamped(kL).  The corresponding public key is therefore also
     // derived via RFC 8032, NOT via direct scalar multiplication (kL * G) as the
     // Cardano BIP32-Ed25519 spec would give.  Using the RFC 8032 verifying key here
     // ensures the witness VKey matches the actual signing key on the device.
-    let verifying_key = SigningKey::from_bytes(private_key.as_array()).verifying_key();
-    Ok((private_key, verifying_key))
+    Ok(root.derive(path).private_key())
 }
 
 #[cfg(test)]
@@ -29,7 +26,7 @@ mod tests {
         seed_phrase: &str,
         passphrase: &str,
         path: Option<&str>,
-    ) -> YkadaResult<Ed25519PrivateKey> {
+    ) -> YkadaResult<SigningKey> {
         let seed = SeedPhrase::try_from(seed_phrase)?;
         let derivation_path = match path {
             Some(path_str) => DerivationPath::try_from(path_str)?,
@@ -37,8 +34,7 @@ mod tests {
         };
         debug!("Deriving key from seed phrase");
         debug!("Derivation path: {:?}", derivation_path);
-        let root_key = CardanoKey::from_seed_phrase(&seed, passphrase)?;
-        Ok(root_key.derive(&derivation_path).private_key())
+        derive_key_pair(&seed, passphrase, &derivation_path)
     }
 
     #[test]
@@ -84,9 +80,9 @@ mod tests {
         let result = derive_key_pair(&seed, "", &path);
 
         assert!(result.is_ok(), "error: {:?}", result.err());
-        let (sk, vk) = result.unwrap();
+        let sk = result.unwrap();
         assert_eq!(sk.as_bytes().len(), 32);
-        assert_eq!(vk.as_bytes().len(), 32);
+        assert_eq!(sk.verifying_key().as_bytes().len(), 32);
     }
 
     #[test]
@@ -98,9 +94,9 @@ mod tests {
         let result = derive_key_pair(&seed, "", &path);
 
         assert!(result.is_ok(), "error: {:?}", result.err());
-        let (sk, vk) = result.unwrap();
+        let sk = result.unwrap();
         assert_eq!(sk.as_bytes().len(), 32);
-        assert_eq!(vk.as_bytes().len(), 32);
+        assert_eq!(sk.verifying_key().as_bytes().len(), 32);
     }
 
     #[test]
@@ -109,8 +105,8 @@ mod tests {
         let seed = SeedPhrase::try_from(phrase).unwrap();
         let path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
 
-        let (_, vk1) = derive_key_pair(&seed, "", &path).unwrap();
-        let (_, vk2) = derive_key_pair(&seed, "", &path).unwrap();
+        let vk1 = derive_key_pair(&seed, "", &path).unwrap().verifying_key();
+        let vk2 = derive_key_pair(&seed, "", &path).unwrap().verifying_key();
         assert_eq!(vk1.as_bytes(), vk2.as_bytes());
     }
 }

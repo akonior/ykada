@@ -1,7 +1,6 @@
 use crate::error::YkadaResult;
 use crate::model::{PinPolicy, Slot, TouchPolicy};
-use crate::Ed25519PrivateKey;
-use ed25519_dalek::VerifyingKey;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyConfig {
@@ -26,7 +25,7 @@ pub trait KeyManager {
     /// the adapter stores it so it can be retrieved later by `DeviceReader::read_public_key`.
     fn import_key(
         &mut self,
-        key: Ed25519PrivateKey,
+        key: SigningKey,
         vk: VerifyingKey,
         config: KeyConfig,
     ) -> YkadaResult<()>;

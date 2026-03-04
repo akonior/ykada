@@ -258,8 +258,12 @@ mod tests {
         let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
         let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
         let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
-        let (_, payment_vk) = derive_key_pair(&seed, "", &payment_path).unwrap();
-        let (_, stake_vk) = derive_key_pair(&seed, "", &stake_path).unwrap();
+        let payment_vk = derive_key_pair(&seed, "", &payment_path)
+            .unwrap()
+            .verifying_key();
+        let stake_vk = derive_key_pair(&seed, "", &stake_path)
+            .unwrap()
+            .verifying_key();
         derive_cardano_address(&payment_vk, &stake_vk, Network::Preview)
     }
 
@@ -410,7 +414,9 @@ mod tests {
     fn test_sign_and_submit_returns_tx_hash() {
         let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
         let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
-        let (_, payment_vk) = crate::logic::derive_key_pair(&seed, "", &payment_path).unwrap();
+        let payment_vk = crate::logic::derive_key_pair(&seed, "", &payment_path)
+            .unwrap()
+            .verifying_key();
         let payment_vkey: [u8; 32] = payment_vk.to_bytes();
 
         let utxo_fetcher = FakeUtxoFetcher {

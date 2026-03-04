@@ -3,8 +3,7 @@ use crate::model::{Algorithm, ManagementKey, Pin, Slot};
 use crate::ports::{
     DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
 };
-use crate::Ed25519PrivateKey;
-use ed25519_dalek::VerifyingKey;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use std::convert::TryInto;
 use tracing::{debug, info};
 use yubikey::piv::{generate, import_cv_key, sign_data};
@@ -91,7 +90,7 @@ impl PinVerifier for PivYubiKey {
 impl KeyManager for PivYubiKey {
     fn import_key(
         &mut self,
-        key: Ed25519PrivateKey,
+        key: SigningKey,
         vk: VerifyingKey,
         config: KeyConfig,
     ) -> YkadaResult<()> {
@@ -112,7 +111,7 @@ impl KeyManager for PivYubiKey {
             &mut self.device,
             config.slot.to_yubikey_slot_id(),
             algorithm.to_yubikey_algorithm_id(),
-            key.as_array(),
+            key.as_bytes(),
             config.touch_policy.to_yubikey_touch_policy(),
             config.pin_policy.to_yubikey_pin_policy(),
         )?;

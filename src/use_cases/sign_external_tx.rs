@@ -131,8 +131,12 @@ mod tests {
         .unwrap();
         let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
         let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
-        let (_, payment_vk) = derive_key_pair(&seed, "", &payment_path).unwrap();
-        let (_, stake_vk) = derive_key_pair(&seed, "", &stake_path).unwrap();
+        let payment_vk = derive_key_pair(&seed, "", &payment_path)
+            .unwrap()
+            .verifying_key();
+        let stake_vk = derive_key_pair(&seed, "", &stake_path)
+            .unwrap()
+            .verifying_key();
         let addr = derive_cardano_address(&payment_vk, &stake_vk, Network::Preview);
         let pallas_addr = Address::from_bytes(&addr.to_bytes()).unwrap();
 

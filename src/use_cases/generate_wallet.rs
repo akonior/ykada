@@ -19,7 +19,8 @@ where
     let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0")?;
     let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0")?;
 
-    let (payment_sk, payment_vk) = derive_key_pair(&seed, "", &payment_path)?;
+    let payment_sk = derive_key_pair(&seed, "", &payment_path)?;
+    let payment_vk = payment_sk.verifying_key();
     debug!(
         "Payment private key: {}",
         hex::encode(payment_sk.as_bytes())
@@ -29,7 +30,8 @@ where
         hex::encode(payment_vk.as_bytes())
     );
 
-    let (stake_sk, stake_vk) = derive_key_pair(&seed, "", &stake_path)?;
+    let stake_sk = derive_key_pair(&seed, "", &stake_path)?;
+    let stake_vk = stake_sk.verifying_key();
     debug!("Stake private key: {}", hex::encode(stake_sk.as_bytes()));
     debug!("Stake verifying key: {}", hex::encode(stake_vk.as_bytes()));
 

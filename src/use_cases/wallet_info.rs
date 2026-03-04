@@ -64,8 +64,10 @@ mod tests {
         let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
         let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
         let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
-        let (payment_sk, payment_vk) = derive_key_pair(&seed, "", &payment_path).unwrap();
-        let (stake_sk, stake_vk) = derive_key_pair(&seed, "", &stake_path).unwrap();
+        let payment_sk = derive_key_pair(&seed, "", &payment_path).unwrap();
+        let payment_vk = payment_sk.verifying_key();
+        let stake_sk = derive_key_pair(&seed, "", &stake_path).unwrap();
+        let stake_vk = stake_sk.verifying_key();
 
         let config = WalletConfig::default();
         let mut device = FakeYubiKey::new(Pin::default());
@@ -137,7 +139,8 @@ mod tests {
     fn test_info_with_one_key() {
         let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
         let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
-        let (payment_sk, payment_vk) = derive_key_pair(&seed, "", &payment_path).unwrap();
+        let payment_sk = derive_key_pair(&seed, "", &payment_path).unwrap();
+        let payment_vk = payment_sk.verifying_key();
 
         let config = WalletConfig::default();
         let mut device = FakeYubiKey::new(Pin::default());
@@ -213,8 +216,12 @@ mod tests {
         let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
         let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
         let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
-        let (_, payment_vk) = derive_key_pair(&seed, "", &payment_path).unwrap();
-        let (_, stake_vk) = derive_key_pair(&seed, "", &stake_path).unwrap();
+        let payment_vk = derive_key_pair(&seed, "", &payment_path)
+            .unwrap()
+            .verifying_key();
+        let stake_vk = derive_key_pair(&seed, "", &stake_path)
+            .unwrap()
+            .verifying_key();
         let expected_address = derive_cardano_address(&payment_vk, &stake_vk, Network::Preview)
             .to_bech32()
             .unwrap();
