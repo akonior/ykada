@@ -2,7 +2,7 @@ use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
 use clap_verbosity_flag::{Verbosity, WarnLevel};
 use std::io::{self, Read, Write};
-use tracing::{error, info};
+use tracing::info;
 
 use ykada::{
     api::{
@@ -254,7 +254,16 @@ impl From<NetworkArg> for Network {
     }
 }
 
-fn main() -> anyhow::Result<()> {
+fn print_error(e: &anyhow::Error) {
+    use std::io::IsTerminal;
+    if std::io::stderr().is_terminal() {
+        eprintln!("\x1b[1;31merror\x1b[0m: {:#}", e);
+    } else {
+        eprintln!("error: {:#}", e);
+    }
+}
+
+fn main() {
     let cli = Cli::parse();
 
     tracing_subscriber::fmt()
@@ -264,7 +273,14 @@ fn main() -> anyhow::Result<()> {
         .with_level(true)
         .init();
 
-    match cli.command {
+    if let Err(e) = run(cli.command) {
+        print_error(&e);
+        std::process::exit(1);
+    }
+}
+
+fn run(command: Commands) -> anyhow::Result<()> {
+    match command {
         Commands::Import {
             seed,
             payment_slot,
@@ -382,18 +398,9 @@ fn main() -> anyhow::Result<()> {
                 pin_policy: key_options.pin_policy.into(),
                 touch_policy: key_options.touch_policy.into(),
             };
-
             let mgmt_key_opt = key_options.mgmt_key.map(|s| s.try_into()).transpose()?;
-
-            match ykada::generate_key_with_config(config, mgmt_key_opt.as_ref()) {
-                Ok(verifying_key) => {
-                    println!("Generated verifying key: {}", verifying_key.to_bech32()?);
-                }
-                Err(e) => {
-                    error!("Failed to generate key: {}", e);
-                    std::process::exit(1);
-                }
-            }
+            let verifying_key = ykada::generate_key_with_config(config, mgmt_key_opt.as_ref())?;
+            println!("Generated verifying key: {}", verifying_key.to_bech32()?);
         }
 
         Commands::Info {
@@ -402,8 +409,7 @@ fn main() -> anyhow::Result<()> {
             network,
         } => {
             let info =
-                ykada::api::wallet_info(payment_slot.into(), stake_slot.into(), network.into())
-                    .context("failed to read device info")?;
+                ykada::api::wallet_info(payment_slot.into(), stake_slot.into(), network.into())?;
 
             let (major, minor, patch) = info.firmware;
             println!("YubiKey serial:          {}", info.serial);
@@ -432,8 +438,7 @@ fn main() -> anyhow::Result<()> {
             network,
         } => {
             let info =
-                ykada::api::wallet_info(payment_slot.into(), stake_slot.into(), network.into())
-                    .context("failed to read device info")?;
+                ykada::api::wallet_info(payment_slot.into(), stake_slot.into(), network.into())?;
 
             let addr = info.address.ok_or_else(|| {
                 anyhow::anyhow!(

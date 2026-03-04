@@ -1,5 +1,5 @@
 use crate::error::YkadaResult;
-use crate::logic::derive_cardano_address;
+use crate::logic::{check_firmware_version, derive_cardano_address};
 use crate::model::{Network, Slot, WalletInfo};
 use crate::ports::{DeviceFinder, DeviceReader};
 
@@ -15,8 +15,10 @@ where
 {
     let mut device = finder.find_first()?;
 
-    let serial = device.serial();
     let firmware = device.firmware_version();
+    check_firmware_version(firmware)?;
+
+    let serial = device.serial();
     let payment_vk = device.read_public_key(payment_slot)?;
     let stake_vk = device.read_public_key(stake_slot)?;
     let address = payment_vk
@@ -202,7 +204,32 @@ mod tests {
         .unwrap();
 
         assert_eq!(info.serial, 0);
-        assert_eq!(info.firmware, (5, 4, 3));
+        assert_eq!(info.firmware, (5, 7, 0));
+    }
+
+    #[test]
+    fn test_rejects_old_firmware() {
+        use crate::YkadaError;
+
+        let mut device = FakeYubiKey::new(Pin::default());
+        device.firmware = (5, 6, 0);
+        let finder = FakeDeviceFinder {
+            device: Some(device),
+        };
+
+        let err = wallet_info_use_case(
+            &finder,
+            Slot::Signature,
+            Slot::KeyManagement,
+            Network::Preview,
+        )
+        .unwrap_err();
+
+        assert!(
+            matches!(err, YkadaError::FirmwareIncompatible { found: (5, 6, 0) }),
+            "expected FirmwareIncompatible, got: {:?}",
+            err
+        );
     }
 
     /// wallet_info_use_case (using finder_with_keys) must produce the same address

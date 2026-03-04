@@ -32,7 +32,7 @@ impl FakeYubiKey {
             authenticated: false,
             pin_verified: false,
             serial: 0,
-            firmware: (5, 4, 3),
+            firmware: (5, 7, 0),
         }
     }
 }

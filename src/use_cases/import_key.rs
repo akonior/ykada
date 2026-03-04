@@ -1,10 +1,9 @@
-use crate::ports::{KeyConfig, ManagementKeyVerifier};
+use crate::logic::check_firmware_version;
+use crate::ports::{DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier};
+use crate::{DerPrivateKey, ManagementKey, YkadaResult};
 use ed25519_dalek::pkcs8::DecodePrivateKey;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use tracing::debug;
-
-use crate::ports::{DeviceFinder, KeyManager};
-use crate::{DerPrivateKey, ManagementKey, YkadaResult};
 
 pub fn import_private_key_in_der_format_use_case<F>(
     finder: &F,
@@ -14,7 +13,7 @@ pub fn import_private_key_in_der_format_use_case<F>(
 ) -> YkadaResult<VerifyingKey>
 where
     F: DeviceFinder,
-    F::Device: KeyManager + ManagementKeyVerifier,
+    F::Device: KeyManager + ManagementKeyVerifier + DeviceReader,
 {
     let signing_key = SigningKey::from_pkcs8_der(der.0.as_slice())?;
     let secret_key = signing_key.as_bytes();
@@ -22,6 +21,7 @@ where
     debug!("Imported private key from DER: {:?}", signing_key);
 
     let mut device = finder.find_first()?;
+    check_firmware_version(device.firmware_version())?;
 
     device.authenticate(mgmt_key)?;
 

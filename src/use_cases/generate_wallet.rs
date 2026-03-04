@@ -1,7 +1,9 @@
 use crate::error::YkadaResult;
-use crate::logic::{derive_cardano_address, derive_signing_key, Bech32Encodable};
+use crate::logic::{
+    check_firmware_version, derive_cardano_address, derive_signing_key, Bech32Encodable,
+};
 use crate::model::{DerivationPath, GeneratedWallet, ManagementKey, SeedPhrase, WalletConfig};
-use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
+use crate::ports::{DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier};
 use tracing::{debug, info};
 
 pub fn generate_wallet_use_case<F>(
@@ -12,7 +14,7 @@ pub fn generate_wallet_use_case<F>(
 ) -> YkadaResult<GeneratedWallet>
 where
     F: DeviceFinder,
-    F::Device: KeyManager + ManagementKeyVerifier,
+    F::Device: KeyManager + ManagementKeyVerifier + DeviceReader,
 {
     info!("Generating Cardano wallet (network: {:?})", config.network);
 
@@ -44,6 +46,7 @@ where
     );
 
     let mut device = finder.find_first()?;
+    check_firmware_version(device.firmware_version())?;
     device.authenticate(mgmt_key)?;
 
     let payment_config = KeyConfig {

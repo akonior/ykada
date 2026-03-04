@@ -1,6 +1,6 @@
-use crate::logic::derive_signing_key;
+use crate::logic::{check_firmware_version, derive_signing_key};
 use crate::model::{DerivationPath, SeedPhrase};
-use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
+use crate::ports::{DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier};
 use crate::{ManagementKey, YkadaResult};
 use ed25519_dalek::VerifyingKey;
 use tracing::{debug, info};
@@ -15,7 +15,7 @@ pub fn import_private_key_from_seed_phrase_use_case<F>(
 ) -> YkadaResult<VerifyingKey>
 where
     F: DeviceFinder,
-    F::Device: KeyManager + ManagementKeyVerifier,
+    F::Device: KeyManager + ManagementKeyVerifier + DeviceReader,
 {
     let seed = SeedPhrase::try_from(seed_phrase)?;
     let derivation_path = if let Some(path_str) = path {
@@ -42,6 +42,7 @@ where
     );
 
     let mut device = finder.find_first()?;
+    check_firmware_version(device.firmware_version())?;
     device.authenticate(mgmt_key)?;
     device.import_key(private_key, cardano_vk, config)?;
 

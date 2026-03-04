@@ -34,6 +34,12 @@ pub enum YkadaError {
     #[error("No YubiKey device found - please connect a YubiKey")]
     NotFound,
 
+    #[error(
+        "YubiKey firmware 5.7 or later is required for Ed25519 support (found {}.{}.{})",
+        found.0, found.1, found.2
+    )]
+    FirmwareIncompatible { found: (u8, u8, u8) },
+
     #[error("YubiKey authentication failed: {reason}")]
     AuthenticationFailed { reason: String },
 

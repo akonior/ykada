@@ -1,6 +1,7 @@
 use crate::error::YkadaResult;
+use crate::logic::check_firmware_version;
 use crate::model::ManagementKey;
-use crate::ports::{DeviceFinder, KeyConfig, KeyManager, ManagementKeyVerifier};
+use crate::ports::{DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier};
 use ed25519_dalek::VerifyingKey;
 
 pub fn generate_key_use_case<F>(
@@ -10,9 +11,10 @@ pub fn generate_key_use_case<F>(
 ) -> YkadaResult<VerifyingKey>
 where
     F: DeviceFinder,
-    F::Device: KeyManager + crate::ports::ManagementKeyVerifier,
+    F::Device: KeyManager + ManagementKeyVerifier + DeviceReader,
 {
     let mut device = finder.find_first()?;
+    check_firmware_version(device.firmware_version())?;
 
     device.authenticate(mgmt_key)?;
 

@@ -1,6 +1,7 @@
 use crate::model::{CardanoAddress, Network};
 use ed25519_dalek::VerifyingKey;
 
+#[derive(Debug)]
 pub struct WalletInfo {
     pub serial: u32,
     pub firmware: (u8, u8, u8),
