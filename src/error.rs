@@ -58,6 +58,18 @@ pub enum YkadaError {
     #[error("Network error: {0}")]
     NetworkError(String),
 
+    #[error("Network error: {0}")]
+    UreqError(Box<ureq::Error>),
+
+    #[error("Network error: {0}")]
+    IoError(#[from] std::io::Error),
+
     #[error("Bech32 error: {0}")]
     Bech32(#[from] crate::logic::Bech32Error),
+}
+
+impl From<ureq::Error> for YkadaError {
+    fn from(e: ureq::Error) -> Self {
+        YkadaError::UreqError(Box::new(e))
+    }
 }

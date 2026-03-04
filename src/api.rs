@@ -129,8 +129,7 @@ pub fn sign_tx_file(
 }
 
 fn decode_bech32(bech32_str: &str) -> YkadaResult<Vec<u8>> {
-    crate::logic::decode_bech32_address(bech32_str)
-        .map_err(|e| YkadaError::NetworkError(e.to_string()))
+    Ok(crate::logic::decode_bech32_address(bech32_str)?)
 }
 
 pub fn import_private_key_from_seed_phrase(

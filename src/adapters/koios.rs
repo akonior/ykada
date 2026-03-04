@@ -60,10 +60,8 @@ impl KoiosClient {
         };
         let response: Vec<KoiosAddressInfo> = ureq::post(&url)
             .set("Content-Type", "application/json")
-            .send_json(body)
-            .map_err(|e| YkadaError::NetworkError(e.to_string()))?
-            .into_json()
-            .map_err(|e| YkadaError::NetworkError(e.to_string()))?;
+            .send_json(body)?
+            .into_json()?;
         Ok(response.into_iter().next())
     }
 }
@@ -146,10 +144,8 @@ impl TipFetcher for KoiosClient {
         let url = format!("{}/tip", self.base_url);
         let response: Vec<KoiosTip> = ureq::get(&url)
             .set("Content-Type", "application/json")
-            .call()
-            .map_err(|e| YkadaError::NetworkError(e.to_string()))?
-            .into_json()
-            .map_err(|e| YkadaError::NetworkError(e.to_string()))?;
+            .call()?
+            .into_json()?;
         response
             .into_iter()
             .next()
@@ -171,8 +167,7 @@ impl TxSubmitter for KoiosClient {
                 }
                 other => YkadaError::NetworkError(other.to_string()),
             })?
-            .into_string()
-            .map_err(|e| YkadaError::NetworkError(e.to_string()))?;
+            .into_string()?;
         Ok(response.trim().trim_matches('"').to_string())
     }
 }
