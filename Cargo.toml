@@ -4,16 +4,6 @@ version = "0.2.3"
 edition = "2021"
 repository = "https://github.com/akonior/ykada"
 
-# Feature Flags:
-# - `cli` (default): Includes the command-line interface binary
-# - `hardware-tests`: Enables hardware tests that require YubiKey device
-#
-# Usage:
-# - As a library only: `ykada = { version = "0.1", default-features = false }`
-# - With CLI (default): `ykada = "0.2"`
-# - Install CLI tool: `cargo install ykada`
-# - Run hardware tests: `cargo test --features hardware-tests`
-
 [features]
 default = ["cli"]
 cli = ["dep:clap", "dep:clap-verbosity-flag", "dep:tracing-subscriber"]
@@ -54,6 +44,7 @@ clap-verbosity-flag = { version = "3.0.4", default-features = false, features = 
 tracing-subscriber = { version = "0.3", optional = true }
 
 rand = "0.9"
+rand_core = "0.9"
 ureq = { version = "2", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 

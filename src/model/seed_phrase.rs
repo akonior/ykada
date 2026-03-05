@@ -5,10 +5,11 @@ use thiserror::Error;
 pub struct SeedPhrase(Mnemonic);
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
-#[error("Invalid mnemonic")]
-pub struct SeedPhraseError {
-    #[from]
-    source: bip39::Error,
+pub enum SeedPhraseError {
+    #[error("Invalid mnemonic")]
+    InvalidMnemonic(#[from] bip39::Error),
+    #[error("OS entropy source unavailable")]
+    EntropyUnavailable(rand_core::OsError),
 }
 
 impl TryFrom<&str> for SeedPhrase {
@@ -27,9 +28,11 @@ impl SeedPhrase {
 
     // Not pure — uses OS entropy. Call only from the shell layer (api.rs).
     pub fn generate() -> Result<Self, SeedPhraseError> {
-        use rand::RngCore;
+        use rand_core::{OsRng, TryRngCore};
         let mut entropy = [0u8; 32];
-        rand::rng().fill_bytes(&mut entropy);
+        OsRng
+            .try_fill_bytes(&mut entropy)
+            .map_err(SeedPhraseError::EntropyUnavailable)?;
         let mnemonic = Mnemonic::from_entropy_in(Language::English, &entropy)?;
         Ok(SeedPhrase(mnemonic))
     }
