@@ -186,9 +186,5 @@ cargo build --release
 cargo test --lib --bins
 
 # Hardware tests (requires connected YubiKey)
-cargo test --lib --features hardware-tests
+./scripts/test_all.sh
 ```
-
-## License
-
-Apache 2.0
