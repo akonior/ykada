@@ -182,6 +182,7 @@ Ykada relies on YubiKey's hardware security for all private key operations:
 - **Physical touch.** By default (`--touch-policy always`), signing requires you to physically touch the YubiKey — preventing remote exploitation even if your PIN is compromised.
 - **Standard derivation path.** Keys follow CIP-1852 (Cardano Icarus derivation). The derivation path is standard, but see the note below on address compatibility.
 
+> [!IMPORTANT]
 > **Address compatibility note.** Standard Cardano wallets (Yoroi, Eternl, cardano-cli) treat the derived extended private key's left 32 bytes (kL) directly as an Ed25519 scalar when computing the public key (`kL·G`). YubiKey PIV requires a 32-byte seed for Ed25519 import; ykada imports kL as that seed, after which the firmware applies an additional SHA-512 hash to derive the actual scalar (`SHA-512(kL)[0:32]·G`). Because the extra hash changes the scalar, the public key — and therefore the Cardano address — produced by ykada will differ from the address any standard wallet derives from the same mnemonic. The address is fully usable on-chain; it just cannot be recovered by another wallet from the same seed phrase.
 
 Networks: `mainnet`, `preprod`, `preview` (default). Use `--network` on any command.
