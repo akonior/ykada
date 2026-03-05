@@ -233,6 +233,7 @@ fn print_error(e: &anyhow::Error) {
 
 fn main() {
     let matches = Cli::command()
+        .before_help(ykada::api::banner())
         .before_long_help(ykada::api::banner())
         .get_matches();
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
