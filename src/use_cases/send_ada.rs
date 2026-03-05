@@ -1,18 +1,20 @@
 use crate::error::{YkadaError, YkadaResult};
-use crate::model::{Pin, SendMode, SendOutcome, Slot, WalletInfo};
-use crate::ports::{DeviceFinder, Signer, TipFetcher, TxSubmitter, UtxoFetcher};
+use crate::logic::decode_bech32_address;
+use crate::model::{Network, Pin, SendMode, SendOutcome, Slot};
+use crate::ports::{DeviceFinder, DeviceReader, Signer, TipFetcher, TxSubmitter, UtxoFetcher};
 use crate::use_cases::build_transaction::{
     sign_and_submit_transaction_use_case, sign_transaction_use_case, SignAndSubmitParams,
     TransactionParams,
 };
-use crate::use_cases::build_transaction_use_case;
+use crate::use_cases::{build_transaction_use_case, wallet_info_use_case};
 
 pub struct SendAdaParams {
-    pub wallet: WalletInfo,
-    pub recipient_bytes: Vec<u8>,
+    pub payment_slot: Slot,
+    pub stake_slot: Slot,
+    pub network: Network,
+    pub recipient: String,
     pub send_lovelace: u64,
     pub fee_lovelace: u64,
-    pub payment_slot: Slot,
     pub mode: SendMode,
     pub pin: Option<Pin>,
 }
@@ -26,19 +28,26 @@ pub fn send_ada_use_case<F, U, T, X>(
 ) -> YkadaResult<SendOutcome>
 where
     F: DeviceFinder,
-    F::Device: Signer,
+    F::Device: Signer + DeviceReader,
     U: UtxoFetcher,
     T: TipFetcher,
     X: TxSubmitter,
 {
+    let wallet = wallet_info_use_case(
+        finder,
+        params.payment_slot,
+        params.stake_slot,
+        params.network,
+    )?;
+    let recipient_bytes = decode_bech32_address(&params.recipient)?;
+
     let SendAdaParams {
-        wallet,
-        recipient_bytes,
         send_lovelace,
         fee_lovelace,
         payment_slot,
         mode,
         pin,
+        ..
     } = params;
 
     let change_address = wallet.address.ok_or_else(|| {

@@ -20,6 +20,6 @@ pub use import_seed::import_private_key_from_seed_phrase_use_case;
 pub use send_ada::{send_ada_use_case, SendAdaParams};
 pub use sign_external_tx::{
     parse_tx_file_json, sign_and_submit_external_tx_use_case, sign_external_tx_use_case,
-    sign_tx_use_case, SignExternalTxParams,
+    sign_tx_file_use_case, sign_tx_use_case, SignExternalTxParams, SignTxFileParams,
 };
 pub use wallet_info::wallet_info_use_case;

@@ -1,15 +1,15 @@
 use crate::adapters::{KoiosClient, PivDeviceFinder};
-use crate::error::{YkadaError, YkadaResult};
+use crate::error::YkadaResult;
 pub use crate::logic::{
     banner, decode_bech32_address, Bech32Encodable, Bech32Error, StakeVerifyingKey,
 };
 pub use crate::model::*;
-use crate::ports::{DeviceFinder, KeyConfig};
+use crate::ports::KeyConfig;
 use crate::use_cases::{
     fetch_balance_use_case, generate_key_use_case, generate_wallet_use_case,
     import_private_key_from_seed_phrase_use_case, import_private_key_in_der_format_use_case,
-    parse_tx_file_json, send_ada_use_case, sign_tx_use_case, wallet_info_use_case, SendAdaParams,
-    SignExternalTxParams,
+    send_ada_use_case, sign_tx_file_use_case, wallet_info_use_case, SendAdaParams,
+    SignTxFileParams,
 };
 use ed25519_dalek::VerifyingKey;
 
@@ -79,19 +79,18 @@ pub fn send_ada(
 ) -> YkadaResult<SendOutcome> {
     let finder = PivDeviceFinder;
     let client = KoiosClient::for_network(network);
-    let wallet = wallet_info_use_case(&finder, payment_slot, stake_slot, network)?;
-    let recipient_bytes = decode_bech32_address(recipient)?;
     send_ada_use_case(
         &finder,
         &client,
         &client,
         &client,
         SendAdaParams {
-            wallet,
-            recipient_bytes,
+            payment_slot,
+            stake_slot,
+            network,
+            recipient: recipient.to_owned(),
             send_lovelace,
             fee_lovelace,
-            payment_slot,
             mode,
             pin,
         },
@@ -106,27 +105,19 @@ pub fn sign_tx_file(
     mode: SendMode,
     pin: Option<Pin>,
 ) -> YkadaResult<SendOutcome> {
-    let unsigned_cbor = parse_tx_file_json(tx_file_content)?;
     let finder = PivDeviceFinder;
-    let info = wallet_info_use_case(&finder, payment_slot, stake_slot, network)?;
-    let payment_vkey = info
-        .payment_vk
-        .ok_or_else(|| {
-            YkadaError::NetworkError("no payment key on YubiKey — import a wallet first".into())
-        })?
-        .to_bytes();
-    let mut yubikey = finder.find_first()?;
     let client = KoiosClient::for_network(network);
-    sign_tx_use_case(
-        &mut yubikey,
+    sign_tx_file_use_case(
+        &finder,
         &client,
-        &unsigned_cbor,
-        SignExternalTxParams {
-            payment_vkey,
+        SignTxFileParams {
+            tx_file_content: tx_file_content.to_owned(),
             payment_slot,
+            stake_slot,
+            network,
+            mode,
             pin,
         },
-        mode,
     )
 }
 

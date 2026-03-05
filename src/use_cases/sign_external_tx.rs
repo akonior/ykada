@@ -3,8 +3,9 @@ use pallas_primitives::{conway, Fragment, NonEmptySet};
 use tracing::{debug, info};
 
 use crate::error::{YkadaError, YkadaResult};
-use crate::model::{Algorithm, Pin, SendMode, SendOutcome, Slot};
-use crate::ports::{Signer, TxSubmitter};
+use crate::model::{Algorithm, Network, Pin, SendMode, SendOutcome, Slot};
+use crate::ports::{DeviceFinder, DeviceReader, Signer, TxSubmitter};
+use crate::use_cases::wallet_info_use_case;
 
 #[derive(serde::Deserialize)]
 struct TxFileExport {
@@ -113,6 +114,52 @@ pub fn sign_and_submit_external_tx_use_case<S: Signer, X: TxSubmitter>(
     let tx_hash = tx_submitter.submit_tx(&signed_bytes)?;
     info!("Transaction submitted: {}", tx_hash);
     Ok(tx_hash)
+}
+
+pub struct SignTxFileParams {
+    pub tx_file_content: String,
+    pub payment_slot: Slot,
+    pub stake_slot: Slot,
+    pub network: Network,
+    pub mode: SendMode,
+    pub pin: Option<Pin>,
+}
+
+pub fn sign_tx_file_use_case<F, X>(
+    finder: &F,
+    tx_submitter: &X,
+    params: SignTxFileParams,
+) -> YkadaResult<SendOutcome>
+where
+    F: DeviceFinder,
+    F::Device: Signer + DeviceReader,
+    X: TxSubmitter,
+{
+    let unsigned_cbor = parse_tx_file_json(&params.tx_file_content)?;
+    let info = wallet_info_use_case(
+        finder,
+        params.payment_slot,
+        params.stake_slot,
+        params.network,
+    )?;
+    let payment_vkey = info
+        .payment_vk
+        .ok_or_else(|| {
+            YkadaError::NetworkError("no payment key on YubiKey — import a wallet first".into())
+        })?
+        .to_bytes();
+    let mut yubikey = finder.find_first()?;
+    sign_tx_use_case(
+        &mut yubikey,
+        tx_submitter,
+        &unsigned_cbor,
+        SignExternalTxParams {
+            payment_vkey,
+            payment_slot: params.payment_slot,
+            pin: params.pin,
+        },
+        params.mode,
+    )
 }
 
 #[cfg(test)]
