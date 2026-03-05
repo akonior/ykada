@@ -4,9 +4,10 @@ use pallas_crypto::key::ed25519::PublicKey as PallasPublicKey;
 use pallas_txbuilder::{BuildConway, BuiltTransaction, Input, Output, StagingTransaction};
 use tracing::{debug, info};
 
+use super::sign_data::{sign_data_use_case, SignDataParams};
 use crate::error::{YkadaError, YkadaResult};
 use crate::logic::{select_inputs, Bech32Encodable};
-use crate::model::{Algorithm, CardanoAddress, Pin, Slot, Utxo};
+use crate::model::{CardanoAddress, Pin, Slot, Utxo};
 use crate::ports::{Signer, TipFetcher, TxSubmitter, UtxoFetcher};
 
 pub struct TransactionParams {
@@ -135,22 +136,16 @@ where
         hex::encode(built.tx_hash.0)
     );
 
-    let sig_bytes = signer.sign(
+    let sig = sign_data_use_case(
+        signer,
         &built.tx_hash.0,
-        params.payment_slot,
-        Algorithm::Ed25519,
-        params.pin.as_ref(),
+        SignDataParams {
+            slot: params.payment_slot,
+            pin: params.pin,
+        },
     )?;
 
-    debug!(
-        "Signature ({} bytes): {}",
-        sig_bytes.len(),
-        hex::encode(&sig_bytes)
-    );
-
-    let sig: [u8; 64] = sig_bytes
-        .try_into()
-        .map_err(|_| YkadaError::NetworkError("signature must be 64 bytes".into()))?;
+    debug!("Signature ({} bytes): {}", sig.len(), hex::encode(sig));
 
     let pubkey = PallasPublicKey::from(params.payment_vkey);
     debug!("Verification key: {}", hex::encode(params.payment_vkey));
@@ -218,7 +213,7 @@ fn parse_tx_hash(hex_str: &str) -> YkadaResult<Hash<32>> {
 mod tests {
     use super::*;
     use crate::logic::{derive_cardano_address, derive_signing_key};
-    use crate::model::{DerivationPath, Network, SeedPhrase, TokenBalance};
+    use crate::model::{Algorithm, DerivationPath, Network, SeedPhrase, TokenBalance};
 
     const TEST_PHRASE: &str =
         "test walk nut penalty hip pave soap entry language right filter choice";

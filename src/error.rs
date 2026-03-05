@@ -46,6 +46,9 @@ pub enum YkadaError {
     #[error("YubiKey authentication failed: {reason}")]
     AuthenticationFailed { reason: String },
 
+    #[error("Invalid signature: expected 64 bytes, got {actual}")]
+    InvalidSignatureLength { actual: usize },
+
     #[error("Ed25519 signature error: {0}")]
     Ed25519SignatureError(#[from] ed25519_dalek::SignatureError),
 

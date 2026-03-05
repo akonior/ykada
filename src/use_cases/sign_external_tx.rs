@@ -2,8 +2,9 @@ use pallas_crypto::hash::Hasher;
 use pallas_primitives::{conway, Fragment, NonEmptySet};
 use tracing::{debug, info};
 
+use super::sign_data::{sign_data_use_case, SignDataParams};
 use crate::error::{YkadaError, YkadaResult};
-use crate::model::{Algorithm, Network, Pin, SendMode, SendOutcome, Slot};
+use crate::model::{Network, Pin, SendMode, SendOutcome, Slot};
 use crate::ports::{DeviceFinder, DeviceReader, Signer, TxSubmitter};
 use crate::use_cases::wallet_info_use_case;
 
@@ -42,16 +43,14 @@ pub fn sign_external_tx_use_case<S: Signer>(
 
     info!("Transaction body hash: {}", hex::encode(tx_hash));
 
-    let sig_bytes = signer.sign(
+    let sig = sign_data_use_case(
+        signer,
         &tx_hash,
-        params.payment_slot,
-        Algorithm::Ed25519,
-        params.pin.as_ref(),
+        SignDataParams {
+            slot: params.payment_slot,
+            pin: params.pin,
+        },
     )?;
-
-    let sig: [u8; 64] = sig_bytes
-        .try_into()
-        .map_err(|_| YkadaError::NetworkError("signature must be 64 bytes".into()))?;
 
     debug!("Signature ({} bytes): {}", sig.len(), hex::encode(sig));
 
@@ -165,6 +164,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Algorithm;
 
     struct FakeSigner;
 

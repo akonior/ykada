@@ -5,6 +5,7 @@ mod generate_wallet;
 mod import_key;
 mod import_seed;
 mod send_ada;
+mod sign_data;
 mod sign_external_tx;
 mod wallet_info;
 
