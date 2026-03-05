@@ -20,7 +20,3 @@ pub use signer::Signer;
 pub use tip_fetcher::TipFetcher;
 pub use tx_submitter::TxSubmitter;
 pub use utxo_fetcher::UtxoFetcher;
-
-pub trait YubiKeyOps: PinVerifier + ManagementKeyVerifier + KeyManager + Signer {}
-
-impl<T> YubiKeyOps for T where T: PinVerifier + ManagementKeyVerifier + KeyManager + Signer {}

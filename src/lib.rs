@@ -2,11 +2,11 @@
 
 mod adapters;
 pub mod api;
-pub mod error;
+mod error;
 mod logic;
 mod model;
-pub mod ports;
-pub mod use_cases;
+mod ports;
+mod use_cases;
 
 pub use api::*;
 pub use error::{YkadaError, YkadaResult};
