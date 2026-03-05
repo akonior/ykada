@@ -5,7 +5,7 @@ use crate::{ManagementKey, YkadaResult};
 use ed25519_dalek::VerifyingKey;
 use tracing::{debug, info};
 
-pub fn import_private_key_from_seed_phrase_use_case<F>(
+pub(crate) fn import_private_key_from_seed_phrase_use_case<F>(
     finder: &F,
     seed_phrase: &str,
     passphrase: &str,

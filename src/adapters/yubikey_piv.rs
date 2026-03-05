@@ -21,7 +21,7 @@ fn slot_to_vk_object_id(slot: Slot) -> ObjectId {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct PivDeviceFinder;
+pub(crate) struct PivDeviceFinder;
 
 impl DeviceFinder for PivDeviceFinder {
     type Device = PivYubiKey;
@@ -44,13 +44,13 @@ impl DeviceFinder for PivDeviceFinder {
 }
 
 #[derive(Debug)]
-pub struct PivYubiKey {
+pub(crate) struct PivYubiKey {
     device: YubiKey,
     authenticated: bool,
 }
 
 impl PivYubiKey {
-    pub fn new(device: YubiKey) -> Self {
+    pub(crate) fn new(device: YubiKey) -> Self {
         Self {
             device,
             authenticated: false,

@@ -3,7 +3,7 @@ use crate::model::Utxo;
 
 /// Largest-first greedy coin selection.
 /// Returns (selected UTxO indices into `utxos`, total lovelace selected).
-pub fn select_inputs(utxos: &[Utxo], required: u64) -> YkadaResult<(Vec<usize>, u64)> {
+pub(crate) fn select_inputs(utxos: &[Utxo], required: u64) -> YkadaResult<(Vec<usize>, u64)> {
     let mut indices: Vec<usize> = (0..utxos.len()).collect();
     indices.sort_by(|&a, &b| utxos[b].lovelace.cmp(&utxos[a].lovelace));
 

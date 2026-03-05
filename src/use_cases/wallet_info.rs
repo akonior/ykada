@@ -6,7 +6,7 @@ use crate::model::{Network, Slot, WalletInfo};
 use crate::ports::{DeviceFinder, DeviceReader};
 use tracing::info;
 
-pub fn wallet_info_use_case<F>(
+pub(crate) fn wallet_info_use_case<F>(
     finder: &F,
     payment_slot: Slot,
     stake_slot: Slot,

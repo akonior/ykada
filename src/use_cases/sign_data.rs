@@ -2,12 +2,12 @@ use crate::error::{YkadaError, YkadaResult};
 use crate::model::{Algorithm, Pin, Slot};
 use crate::ports::Signer;
 
-pub struct SignDataParams {
+pub(super) struct SignDataParams {
     pub slot: Slot,
     pub pin: Option<Pin>,
 }
 
-pub fn sign_data_use_case<S: Signer>(
+pub(super) fn sign_data_use_case<S: Signer>(
     signer: &mut S,
     data: &[u8],
     params: SignDataParams,

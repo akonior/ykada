@@ -14,20 +14,20 @@ struct TxFileExport {
     cbor_hex: String,
 }
 
-pub fn parse_tx_file_json(json_content: &str) -> YkadaResult<Vec<u8>> {
+pub(super) fn parse_tx_file_json(json_content: &str) -> YkadaResult<Vec<u8>> {
     let export: TxFileExport = serde_json::from_str(json_content)
         .map_err(|e| YkadaError::NetworkError(format!("invalid transaction JSON: {e}")))?;
     hex::decode(&export.cbor_hex)
         .map_err(|e| YkadaError::NetworkError(format!("invalid CBOR hex: {e}")))
 }
 
-pub struct SignExternalTxParams {
+pub(super) struct SignExternalTxParams {
     pub payment_vkey: [u8; 32],
     pub payment_slot: Slot,
     pub pin: Option<Pin>,
 }
 
-pub fn hash_tx_body(unsigned_tx_cbor: &[u8]) -> YkadaResult<TxHash> {
+pub(super) fn hash_tx_body(unsigned_tx_cbor: &[u8]) -> YkadaResult<TxHash> {
     let tx = conway::Tx::decode_fragment(unsigned_tx_cbor)
         .map_err(|e| YkadaError::NetworkError(format!("invalid transaction CBOR: {e}")))?;
     let body_bytes = tx
@@ -37,7 +37,7 @@ pub fn hash_tx_body(unsigned_tx_cbor: &[u8]) -> YkadaResult<TxHash> {
     Ok(TxHash::new(*Hasher::<256>::hash(&body_bytes)))
 }
 
-pub fn sign_external_tx_use_case<S: Signer>(
+pub(super) fn sign_external_tx_use_case<S: Signer>(
     signer: &mut S,
     unsigned_tx_cbor: &[u8],
     params: SignExternalTxParams,
@@ -83,7 +83,7 @@ pub fn sign_external_tx_use_case<S: Signer>(
     Ok(signed_bytes)
 }
 
-pub fn sign_tx_use_case<S, X>(
+pub(super) fn sign_tx_use_case<S, X>(
     signer: &mut S,
     tx_submitter: &X,
     unsigned_cbor: &[u8],
@@ -108,7 +108,7 @@ where
     }
 }
 
-pub fn sign_and_submit_external_tx_use_case<S: Signer, X: TxSubmitter>(
+pub(super) fn sign_and_submit_external_tx_use_case<S: Signer, X: TxSubmitter>(
     signer: &mut S,
     tx_submitter: &X,
     unsigned_tx_cbor: &[u8],
@@ -121,7 +121,7 @@ pub fn sign_and_submit_external_tx_use_case<S: Signer, X: TxSubmitter>(
     Ok(tx_hash)
 }
 
-pub struct SignTxFileParams {
+pub(crate) struct SignTxFileParams {
     pub tx_file_content: String,
     pub payment_slot: Slot,
     pub stake_slot: Slot,
@@ -130,7 +130,7 @@ pub struct SignTxFileParams {
     pub pin: Option<Pin>,
 }
 
-pub fn sign_tx_file_use_case<F, X>(
+pub(crate) fn sign_tx_file_use_case<F, X>(
     finder: &F,
     tx_submitter: &X,
     params: SignTxFileParams,

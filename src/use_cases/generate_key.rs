@@ -4,7 +4,7 @@ use crate::model::ManagementKey;
 use crate::ports::{DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier};
 use ed25519_dalek::VerifyingKey;
 
-pub fn generate_key_use_case<F>(
+pub(crate) fn generate_key_use_case<F>(
     finder: &F,
     config: KeyConfig,
     mgmt_key: Option<&ManagementKey>,

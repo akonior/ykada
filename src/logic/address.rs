@@ -5,7 +5,7 @@ use ed25519_dalek::VerifyingKey;
 
 type Blake2b224 = Blake2b<U28>;
 
-pub fn derive_cardano_address(
+pub(crate) fn derive_cardano_address(
     payment_vk: &VerifyingKey,
     stake_vk: &VerifyingKey,
     network: Network,

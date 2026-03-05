@@ -10,14 +10,14 @@ use crate::logic::{select_inputs, Bech32Encodable};
 use crate::model::{CardanoAddress, Pin, Slot, Utxo};
 use crate::ports::{Signer, TipFetcher, TxSubmitter, UtxoFetcher};
 
-pub struct TransactionParams {
+pub(crate) struct TransactionParams {
     pub recipient_address_bytes: Vec<u8>,
     pub send_lovelace: u64,
     pub fee_lovelace: u64,
     pub change_address: CardanoAddress,
 }
 
-pub struct SignAndSubmitParams {
+pub(super) struct SignAndSubmitParams {
     pub recipient_address_bytes: Vec<u8>,
     pub send_lovelace: u64,
     pub fee_lovelace: u64,
@@ -27,7 +27,7 @@ pub struct SignAndSubmitParams {
     pub pin: Option<Pin>,
 }
 
-pub fn build_transaction_use_case<U, T>(
+pub(crate) fn build_transaction_use_case<U, T>(
     utxo_fetcher: &U,
     tip_fetcher: &T,
     params: TransactionParams,
@@ -59,7 +59,7 @@ where
     Ok(built.tx_bytes.0)
 }
 
-pub fn sign_transaction_use_case<U, T, S>(
+pub(super) fn sign_transaction_use_case<U, T, S>(
     utxo_fetcher: &U,
     tip_fetcher: &T,
     signer: &mut S,
@@ -73,7 +73,7 @@ where
     build_and_sign(utxo_fetcher, tip_fetcher, signer, params).map(|signed| signed.tx_bytes.0)
 }
 
-pub fn sign_and_submit_transaction_use_case<U, T, S, X>(
+pub(super) fn sign_and_submit_transaction_use_case<U, T, S, X>(
     utxo_fetcher: &U,
     tip_fetcher: &T,
     signer: &mut S,

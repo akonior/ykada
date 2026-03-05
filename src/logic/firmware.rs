@@ -1,6 +1,6 @@
 use crate::error::{YkadaError, YkadaResult};
 
-pub fn check_firmware_version(version: (u8, u8, u8)) -> YkadaResult<()> {
+pub(crate) fn check_firmware_version(version: (u8, u8, u8)) -> YkadaResult<()> {
     let (major, minor, _) = version;
     if (major, minor) >= (5, 7) {
         Ok(())

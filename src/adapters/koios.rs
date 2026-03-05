@@ -38,12 +38,12 @@ struct KoiosTip {
     abs_slot: u64,
 }
 
-pub struct KoiosClient {
+pub(crate) struct KoiosClient {
     base_url: &'static str,
 }
 
 impl KoiosClient {
-    pub fn for_network(network: Network) -> Self {
+    pub(crate) fn for_network(network: Network) -> Self {
         Self {
             base_url: match network {
                 Network::Mainnet => "https://api.koios.rest/api/v1",

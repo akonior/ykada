@@ -5,7 +5,7 @@ use ed25519_dalek::pkcs8::DecodePrivateKey;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use tracing::debug;
 
-pub fn import_private_key_in_der_format_use_case<F>(
+pub(crate) fn import_private_key_in_der_format_use_case<F>(
     finder: &F,
     der: DerPrivateKey,
     config: KeyConfig,

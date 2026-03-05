@@ -3,7 +3,7 @@ use crate::model::{AccountBalance, CardanoAddress};
 use crate::ports::BalanceFetcher;
 use crate::YkadaResult;
 
-pub fn fetch_balance_use_case<B: BalanceFetcher>(
+pub(crate) fn fetch_balance_use_case<B: BalanceFetcher>(
     fetcher: &B,
     address: &CardanoAddress,
 ) -> YkadaResult<AccountBalance> {

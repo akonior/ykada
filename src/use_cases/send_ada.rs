@@ -8,7 +8,7 @@ use crate::use_cases::build_transaction::{
 };
 use crate::use_cases::{build_transaction_use_case, wallet_info_use_case};
 
-pub struct SendAdaParams {
+pub(crate) struct SendAdaParams {
     pub payment_slot: Slot,
     pub stake_slot: Slot,
     pub network: Network,
@@ -19,7 +19,7 @@ pub struct SendAdaParams {
     pub pin: Option<Pin>,
 }
 
-pub fn send_ada_use_case<F, U, T, X>(
+pub(crate) fn send_ada_use_case<F, U, T, X>(
     finder: &F,
     utxo_fetcher: &U,
     tip_fetcher: &T,

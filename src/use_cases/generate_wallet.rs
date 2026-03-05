@@ -7,7 +7,7 @@ use crate::model::{DerivationPath, GeneratedWallet, ManagementKey, SeedPhrase, W
 use crate::ports::{DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier};
 use tracing::{debug, info};
 
-pub fn generate_wallet_use_case<F>(
+pub(crate) fn generate_wallet_use_case<F>(
     finder: &F,
     seed: Option<SeedPhrase>,
     config: WalletConfig,

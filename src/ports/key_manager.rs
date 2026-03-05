@@ -19,7 +19,7 @@ impl Default for KeyConfig {
     }
 }
 
-pub trait KeyManager {
+pub(crate) trait KeyManager {
     /// Import a private key into the device.
     /// `vk` is the Cardano verifying key (`kL * G`) associated with `key`;
     /// the adapter stores it so it can be retrieved later by `DeviceReader::read_public_key`.

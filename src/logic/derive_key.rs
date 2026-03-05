@@ -2,7 +2,7 @@ use crate::model::{CardanoKey, DerivationPath, SeedPhrase};
 use crate::YkadaResult;
 use ed25519_dalek::SigningKey;
 
-pub fn derive_signing_key(
+pub(crate) fn derive_signing_key(
     seed: &SeedPhrase,
     passphrase: &str,
     path: &DerivationPath,
