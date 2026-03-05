@@ -1,6 +1,8 @@
 use crate::adapters::{KoiosClient, PivDeviceFinder};
 use crate::error::{YkadaError, YkadaResult};
-pub use crate::logic::{banner, Bech32Encodable, Bech32Error, StakeVerifyingKey};
+pub use crate::logic::{
+    banner, decode_bech32_address, Bech32Encodable, Bech32Error, StakeVerifyingKey,
+};
 pub use crate::model::*;
 use crate::ports::{DeviceFinder, KeyConfig};
 use crate::use_cases::{
@@ -78,7 +80,7 @@ pub fn send_ada(
     let finder = PivDeviceFinder;
     let client = KoiosClient::for_network(network);
     let wallet = wallet_info_use_case(&finder, payment_slot, stake_slot, network)?;
-    let recipient_bytes = decode_bech32(recipient)?;
+    let recipient_bytes = decode_bech32_address(recipient)?;
     send_ada_use_case(
         &finder,
         &client,
@@ -126,10 +128,6 @@ pub fn sign_tx_file(
         },
         mode,
     )
-}
-
-fn decode_bech32(bech32_str: &str) -> YkadaResult<Vec<u8>> {
-    Ok(crate::logic::decode_bech32_address(bech32_str)?)
 }
 
 pub fn import_private_key_from_seed_phrase(
