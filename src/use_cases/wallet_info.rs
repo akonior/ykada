@@ -1,7 +1,10 @@
 use crate::error::YkadaResult;
-use crate::logic::{check_firmware_version, derive_cardano_address};
+use crate::logic::{
+    check_firmware_version, derive_cardano_address, Bech32Encodable, StakeVerifyingKey,
+};
 use crate::model::{Network, Slot, WalletInfo};
 use crate::ports::{DeviceFinder, DeviceReader};
+use tracing::info;
 
 pub fn wallet_info_use_case<F>(
     finder: &F,
@@ -19,8 +22,31 @@ where
     check_firmware_version(firmware)?;
 
     let serial = device.serial();
+    info!("YubiKey serial:          {}", serial);
+    let (major, minor, patch) = firmware;
+    info!("Firmware version:        {}.{}.{}", major, minor, patch);
+
     let payment_vk = device.read_public_key(payment_slot)?;
     let stake_vk = device.read_public_key(stake_slot)?;
+
+    match &payment_vk {
+        Some(vk) => info!(
+            "Payment verifying key:   {}",
+            vk.to_bech32()
+                .unwrap_or_else(|_| "<encoding error>".to_string())
+        ),
+        None => info!("Payment verifying key:   (none)"),
+    }
+    match &stake_vk {
+        Some(vk) => info!(
+            "Stake verifying key:     {}",
+            StakeVerifyingKey(*vk)
+                .to_bech32()
+                .unwrap_or_else(|_| "<encoding error>".to_string())
+        ),
+        None => info!("Stake verifying key:     (none)"),
+    }
+
     let address = payment_vk
         .zip(stake_vk)
         .map(|(p, s)| derive_cardano_address(&p, &s, network));

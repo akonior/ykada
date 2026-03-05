@@ -1,6 +1,7 @@
 use crate::error::YkadaResult;
 use crate::logic::{
     check_firmware_version, derive_cardano_address, derive_signing_key, Bech32Encodable,
+    StakeVerifyingKey,
 };
 use crate::model::{DerivationPath, GeneratedWallet, ManagementKey, SeedPhrase, WalletConfig};
 use crate::ports::{DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier};
@@ -41,6 +42,19 @@ where
     let stake_vk = stake_sk.verifying_key();
     debug!("Stake private key: {}", hex::encode(stake_sk.as_bytes()));
     debug!("Stake verifying key: {}", hex::encode(stake_vk.as_bytes()));
+
+    info!(
+        "Payment verifying key:   {}",
+        payment_vk
+            .to_bech32()
+            .unwrap_or_else(|_| hex::encode(payment_vk.as_bytes()))
+    );
+    info!(
+        "Stake verifying key:     {}",
+        StakeVerifyingKey(stake_vk)
+            .to_bech32()
+            .unwrap_or_else(|_| hex::encode(stake_vk.as_bytes()))
+    );
 
     let address = derive_cardano_address(&payment_vk, &stake_vk, config.network);
     debug!(

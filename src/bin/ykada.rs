@@ -1,11 +1,10 @@
 use anyhow::Context;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use clap_verbosity_flag::{Verbosity, WarnLevel};
-use tracing::info;
 
 use ykada::api::{
-    Bech32Encodable, Network, Pin, PinPolicy, SeedPhrase, SendMode, SendOutcome, Slot,
-    StakeVerifyingKey, TouchPolicy, WalletConfig,
+    Bech32Encodable, Network, Pin, PinPolicy, SeedPhrase, SendMode, SendOutcome, Slot, TouchPolicy,
+    WalletConfig,
 };
 
 #[derive(Parser, Debug)]
@@ -273,14 +272,6 @@ fn run(command: Commands) -> anyhow::Result<()> {
             let seed_phrase = SeedPhrase::try_from(seed.as_str()).context("invalid seed phrase")?;
             let wallet = ykada::import_wallet(seed_phrase, config, mgmt_key_opt.as_ref())
                 .context("failed to import wallet from seed phrase")?;
-            info!(
-                "Payment verifying key:   {}",
-                wallet.payment_vk.to_bech32()?
-            );
-            info!(
-                "Stake verifying key:     {}",
-                StakeVerifyingKey(wallet.stake_vk).to_bech32()?
-            );
             println!("Cardano address:         {}", wallet.address.to_bech32()?);
         }
 
@@ -307,14 +298,6 @@ fn run(command: Commands) -> anyhow::Result<()> {
             let wallet =
                 ykada::api::generate_or_import_wallet(seed_phrase, config, mgmt_key_opt.as_ref())?;
             println!("Mnemonic (store safely): {}", wallet.mnemonic.phrase());
-            info!(
-                "Payment verifying key:   {}",
-                wallet.payment_vk.to_bech32()?
-            );
-            info!(
-                "Stake verifying key:     {}",
-                StakeVerifyingKey(wallet.stake_vk).to_bech32()?
-            );
             println!("Cardano address:         {}", wallet.address.to_bech32()?);
         }
 
@@ -326,21 +309,6 @@ fn run(command: Commands) -> anyhow::Result<()> {
             let info =
                 ykada::api::wallet_info(payment_slot.into(), stake_slot.into(), network.into())?;
 
-            let (major, minor, patch) = info.firmware;
-            info!("YubiKey serial:          {}", info.serial);
-            info!("Firmware version:        {}.{}.{}", major, minor, patch);
-
-            match info.payment_vk {
-                Some(vk) => info!("Payment verifying key:   {}", vk.to_bech32()?),
-                None => info!("Payment verifying key:   (none)"),
-            }
-            match info.stake_vk {
-                Some(vk) => info!(
-                    "Stake verifying key:     {}",
-                    StakeVerifyingKey(vk).to_bech32()?
-                ),
-                None => info!("Stake verifying key:     (none)"),
-            }
             match info.address {
                 Some(addr) => println!("Cardano address:         {}", addr.to_bech32()?),
                 None => println!("Cardano address:         (no wallet — run `ykada generate` or `ykada import` first)"),
