@@ -1,12 +1,18 @@
 [package]
 name = "ykada"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 repository = "https://github.com/akonior/ykada"
 
 [features]
 default = ["cli"]
-cli = ["dep:clap", "dep:clap-verbosity-flag", "dep:tracing-subscriber", "dep:pinentry", "dep:secrecy"]
+cli = [
+  "dep:clap",
+  "dep:clap-verbosity-flag",
+  "dep:tracing-subscriber",
+  "dep:pinentry",
+  "dep:secrecy",
+]
 hardware-tests = []
 
 [[bin]]
