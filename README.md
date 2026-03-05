@@ -10,17 +10,10 @@ Turn your YubiKey into a Cardano hardware wallet.
 
 `ykada` stores Cardano signing keys on a YubiKey's PIV slots and uses them to sign Cardano transactions — keeping your keys offline and protected by PIN and physical touch.
 
-## Install
-
-```sh
-cargo install --path . --locked
-```
-
-Requires a YubiKey 5 series (firmware 5.7+).
 
 ## Quick Start
 
-**1. Generate a wallet**
+**Generate a wallet**
 
 ```
 $ ykada generate
@@ -30,7 +23,7 @@ Cardano address:         addr_test1qphwrxw2kcu4kasezlh5hxnulvha9ufqs55d7tw0jhvv6
 
 Write down the 24-word mnemonic and store it safely. It is the only backup of your wallet.
 
-**2. Check your balance**
+**Check your balance**
 
 ```
 $ ykada balance
@@ -39,12 +32,20 @@ Account balance:
   ADA:            0.000000
 ```
 
-**3. Send ADA**
+**Send ADA**
 
 ```
 $ ykada send --ada 1 --to addr_test1qzsmxwwte2fw6cla5d4c725f3wkmth9k4ds923lgjq6vey0uxtmw20nuadt9qv2ak6adgskdtp3j6jx7xp39gs9wa5hs0z854g
 Transaction ID: 8f7334094b3c4df2fc5eee892865c4175841da390fe77a4bbfd94b633085d58e
 ```
+
+## Install
+
+```sh
+cargo install --path . --locked
+```
+
+Requires a YubiKey 5 series (firmware 5.7+).
 
 ## Commands
 
