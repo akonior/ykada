@@ -15,7 +15,7 @@ Hardware wallet for Cardano using YubiKey. Private keys never leave the device.
 cargo install --path . --locked
 ```
 
-Requires a YubiKey 5 series (firmware 5.7+) with Ed25519 support.
+Requires a YubiKey 5 series (firmware 5.7+).
 
 ## Quick Start
 
@@ -49,17 +49,11 @@ Transaction ID: 8f7334094b3c4df2fc5eee892865c4175841da390fe77a4bbfd94b633085d58e
 
 ### `ykada info`
 
-Show connected YubiKey device info and wallet address.
+Show Cardano address associated with keys stored on device.
 
 ```
 $ ykada info
-YubiKey serial:          27257069
-Firmware version:        5.7.4
-Payment slot:            signature
-Payment derivation path: m/1852'/1815'/0'/0/0
-Stake slot:              key-management
-Stake derivation path:   m/1852'/1815'/0'/2/0
-Cardano address:         addr_test1qzsm...
+Cardano address:         addr_test1qzsmxwwte2fw6cla5d4c725f3wkmth9k4ds923lgjq6vey0uxtmw20nuadt9qv2ak6adgskdtp3j6jx7xp39gs9wa5hs0z854g
 ```
 
 ### `ykada generate`
@@ -72,14 +66,7 @@ Mnemonic (store safely): express crime shrimp theory sword always search orbit p
 Cardano address:         addr_test1qphwrxw2kcu4kasezlh5hxnulvha9ufqs55d7tw0jhvv696d9egjx7sqp0tlfh300e4wn88s4r333yl0reu2njwtqy3qm5zq89
 ```
 
-| Option | Default | Description |
-|---|---|---|
-| `--network` | `preview` | `mainnet`, `preprod`, or `preview` |
-| `--pin-policy` | `always` | When PIN is required: `never`, `once`, `always` |
-| `--touch-policy` | `always` | When physical touch is required: `never`, `always`, `cached` |
-| `--payment-slot` | `signature` | YubiKey PIV slot for payment key |
-| `--stake-slot` | `key-management` | YubiKey PIV slot for stake key |
-| `--mgmt-key` | — | YubiKey management key (hex) |
+For full options (network, PIN policy, touch policy, PIV slots, etc.) run `ykada generate --help`.
 
 ### `ykada import`
 
@@ -90,11 +77,7 @@ $ ykada import --seed "slim fine attend tape wave input head crew shift desk fin
 Cardano address:         addr_test1qzsmxwwte2fw6cla5d4c725f3wkmth9k4ds923lgjq6vey0uxtmw20nuadt9qv2ak6adgskdtp3j6jx7xp39gs9wa5hs0z854g
 ```
 
-Accepts the same options as `generate` (`--network`, `--pin-policy`, `--touch-policy`, `--payment-slot`, `--stake-slot`, `--mgmt-key`).
-
-| Option | Default | Description |
-|---|---|---|
-| `--seed` | *(required)* | 24-word BIP39 mnemonic |
+Accepts the same options as `generate` (`--network`, `--pin-policy`, `--touch-policy`, `--payment-slot`, `--stake-slot`, `--mgmt-key`). Run `ykada import --help` for details.
 
 ### `ykada balance`
 
@@ -107,9 +90,7 @@ Account balance:
   ADA:            91.020067
 ```
 
-| Option | Default | Description |
-|---|---|---|
-| `--network` | `preview` | Network to query |
+Run `ykada balance --help` for all options.
 
 ### `ykada send`
 
@@ -120,18 +101,7 @@ $ ykada send --ada 5 --to addr_test1qr...
 Transaction ID: f9a03b8d...
 ```
 
-| Option | Default | Description |
-|---|---|---|
-| `--to` | *(required)* | Recipient address (bech32) |
-| `--ada` | — | Amount in ADA (whole units) |
-| `--lovelace` | — | Amount in lovelace (1 ADA = 1,000,000 lovelace) |
-| `--fee` | `200000` | Transaction fee in lovelace |
-| `--network` | `preview` | Network to submit to |
-| `--pin` | — | YubiKey PIN (prompted if needed) |
-| `--dry-run` | — | Build unsigned transaction only (CBOR hex) |
-| `--only-sign` | — | Sign but don't submit (CBOR hex) |
-
-Specify either `--ada` or `--lovelace`, not both.
+Specify `--to` (recipient), `--ada` or `--lovelace` (amount, not both). Run `ykada send --help` for all options.
 
 ### `ykada sign-tx`
 
@@ -147,12 +117,7 @@ Transaction ID: f9a03b8d...
 
 The transaction file must contain a `cborHex` field with the unsigned transaction.
 
-| Option | Default | Description |
-|---|---|---|
-| `--tx-file` | *(required)* | Path to unsigned transaction JSON |
-| `--send` | — | Submit to the network after signing |
-| `--network` | `preview` | Network for submission |
-| `--pin` | — | YubiKey PIN |
+Run `ykada sign-tx --help` for all options.
 
 ## Workflows
 
@@ -204,13 +169,7 @@ Ykada relies on YubiKey's hardware security for all private key operations:
 
 > **Address compatibility note.** Standard Cardano wallets (Yoroi, Eternl, cardano-cli) treat the derived extended private key's left 32 bytes (kL) directly as an Ed25519 scalar when computing the public key (`kL·G`). YubiKey PIV requires a 32-byte seed for Ed25519 import; ykada imports kL as that seed, after which the firmware applies an additional SHA-512 hash to derive the actual scalar (`SHA-512(kL)[0:32]·G`). Because the extra hash changes the scalar, the public key — and therefore the Cardano address — produced by ykada will differ from the address any standard wallet derives from the same mnemonic. The address is fully usable on-chain; it just cannot be recovered by another wallet from the same seed phrase.
 
-## Networks
-
-| Network | Address prefix | Use |
-|---|---|---|
-| `mainnet` | `addr1...` | Real ADA |
-| `preprod` | `addr_test1...` | Long-running testnet |
-| `preview` | `addr_test1...` | Fast-moving testnet (default) |
+Networks: `mainnet`, `preprod`, `preview` (default). Use `--network` on any command.
 
 ## Building from Source
 
