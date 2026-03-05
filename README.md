@@ -160,11 +160,24 @@ ykada send --ada 10 --to addr_test1qr... --only-sign
 ykada send --ada 10 --to addr_test1qr...
 ```
 
+> [!CAUTION]
+> **Key generation and import expose your seed phrase.**
+>
+> `ykada` is a CLI tool. When you run `ykada generate`, the 24-word mnemonic is printed to your terminal and remains visible in your shell history. When you run `ykada import --seed "..."`, the seed phrase is passed as a command-line argument and is likewise recorded in shell history (e.g. `~/.zsh_history`, `~/.bash_history`). Anyone with access to that history file can steal your funds.
+>
+> **Recommendations:**
+> - Run key generation and import on a dedicated air-gapped machine that never connects to the internet.
+> - Use a live, amnesic OS such as [Tails Linux](https://tails.boum.org/) — it leaves no persistent history or filesystem traces after shutdown.
+> - If you cannot use an air-gapped machine, at minimum clear your shell history immediately after importing: `history -c && history -w` (bash) or `history -p` (zsh).
+> - Never generate or import keys on a shared, networked, or otherwise untrusted machine.
+>
+> The randomness used during key generation comes from the operating system entropy source (`/dev/urandom` / OS CSPRNG). On a live Tails session this is adequately seeded, but be cautious on freshly booted minimal VMs with limited entropy.
+
 ## Security Model
 
 Ykada relies on YubiKey's hardware security for all private key operations:
 
-- **Keys never leave the YubiKey.** Generation, import, and signing all happen on-device. The YubiKey stores Ed25519 keys in PIV slots and performs signing internally.
+- **Keys never leave the YubiKey.** The YubiKey stores Ed25519 keys in PIV slots and performs signing internally.
 - **PIN protection.** By default (`--pin-policy always`), every signing operation requires your YubiKey PIN.
 - **Physical touch.** By default (`--touch-policy always`), signing requires you to physically touch the YubiKey — preventing remote exploitation even if your PIN is compromised.
 - **Standard derivation path.** Keys follow CIP-1852 (Cardano Icarus derivation). The derivation path is standard, but see the note below on address compatibility.
