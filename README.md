@@ -1,11 +1,12 @@
 # Yubikey Cardano Wallet
 
+**Hardware security. Air-gapped keys. Touch to sign.**
+Turn your YubiKey into a Cardano hardware wallet.
+
 > [!CAUTION]
 > **Proof of concept — do not use with real funds.**
 >
 > This software is experimental and has not been security-audited. Key derivation, PIV integration, and transaction signing are research-grade implementations that have not undergone independent security review. The software is provided "as is", without warranty of any kind, express or implied. **Do not run on mainnet or with funds you cannot afford to lose.**
-
-Hardware wallet for Cardano using YubiKey. Private keys never leave the device.
 
 `ykada` stores Cardano signing keys on a YubiKey's PIV slots and uses them to sign Cardano transactions — keeping your keys offline and protected by PIN and physical touch.
 
