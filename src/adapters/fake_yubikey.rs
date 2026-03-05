@@ -1,7 +1,8 @@
 use crate::error::{YkadaError, YkadaResult};
-use crate::model::{Algorithm, ManagementKey, Pin, Slot};
+use crate::model::{Algorithm, ManagementKey, Pin, PinPolicy, Slot, TouchPolicy};
 use crate::ports::{
     DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
+    SlotPolicyReader,
 };
 use crate::run_yubikey_contract_tests;
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -15,6 +16,7 @@ pub struct FakeYubiKey {
     pub pin: Pin,
     pub mgmt_key: ManagementKey,
     pub keys: HashMap<Slot, SigningKey>,
+    pub slot_policies: HashMap<Slot, (PinPolicy, TouchPolicy)>,
     pub authenticated: bool,
     pub pin_verified: bool,
     pub serial: u32,
@@ -29,6 +31,7 @@ impl FakeYubiKey {
                 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 9,
             ]),
             keys: HashMap::new(),
+            slot_policies: HashMap::new(),
             authenticated: false,
             pin_verified: false,
             serial: 0,
@@ -82,6 +85,8 @@ impl KeyManager for FakeYubiKey {
             hex::encode(key.as_bytes()),
             hex::encode(vk.as_bytes()),
         );
+        self.slot_policies
+            .insert(config.slot, (config.pin_policy, config.touch_policy));
         self.keys.insert(config.slot, key);
         info!("FakeYubiKey: key imported to slot {:?}", config.slot);
         Ok(())
@@ -99,6 +104,8 @@ impl KeyManager for FakeYubiKey {
         let signing_key = SigningKey::from_bytes(&secret_bytes);
         let verifying_key = signing_key.verifying_key();
 
+        self.slot_policies
+            .insert(config.slot, (config.pin_policy, config.touch_policy));
         self.keys.insert(config.slot, signing_key);
         Ok(verifying_key)
     }
@@ -154,6 +161,16 @@ impl DeviceReader for FakeYubiKey {
 
     fn read_public_key(&mut self, slot: Slot) -> YkadaResult<Option<VerifyingKey>> {
         Ok(self.keys.get(&slot).map(|key| key.verifying_key()))
+    }
+}
+
+impl SlotPolicyReader for FakeYubiKey {
+    fn read_slot_policy(&mut self, slot: Slot) -> YkadaResult<(PinPolicy, TouchPolicy)> {
+        Ok(self
+            .slot_policies
+            .get(&slot)
+            .copied()
+            .unwrap_or((PinPolicy::Never, TouchPolicy::Never)))
     }
 }
 

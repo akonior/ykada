@@ -1,6 +1,7 @@
 use anyhow::Context;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use clap_verbosity_flag::{Verbosity, WarnLevel};
+use secrecy::ExposeSecret;
 
 use ykada::api::{
     Bech32Encodable, Network, Pin, PinPolicy, SeedPhrase, SendMode, SendOutcome, Slot, TouchPolicy,
@@ -221,6 +222,43 @@ impl From<NetworkArg> for Network {
     }
 }
 
+fn resolve_pin_and_notify(
+    slot: Slot,
+    cli_pin: Option<String>,
+    is_terminal: bool,
+) -> anyhow::Result<(Option<Pin>, TouchPolicy)> {
+    let (pin_policy, touch_policy) =
+        ykada::api::read_slot_policy(slot).context("failed to read slot policy")?;
+
+    let pin = match pin_policy {
+        PinPolicy::Never => None,
+        PinPolicy::Once | PinPolicy::Always => match cli_pin {
+            Some(s) => Some(s.parse::<Pin>()?),
+            None => {
+                if is_terminal {
+                    eprint!("Waiting for PIN...");
+                }
+                let passphrase = pinentry::PassphraseInput::with_default_binary()
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "pinentry not found; install pinentry or use --pin to provide PIN directly"
+                        )
+                    })?
+                    .with_description("Enter your YubiKey PIN")
+                    .with_prompt("PIN:")
+                    .interact()
+                    .map_err(|e| anyhow::anyhow!("pinentry error: {e}"))?;
+                if is_terminal {
+                    eprint!("\r\x1b[K");
+                }
+                Some(passphrase.expose_secret().parse::<Pin>()?)
+            }
+        },
+    };
+
+    Ok((pin, touch_policy))
+}
+
 fn print_error(e: &anyhow::Error) {
     use std::io::IsTerminal;
     if std::io::stderr().is_terminal() {
@@ -351,24 +389,35 @@ fn run(command: Commands) -> anyhow::Result<()> {
             network,
             pin,
         } => {
+            use std::io::IsTerminal;
+            let is_terminal = std::io::stderr().is_terminal();
             let content = std::fs::read_to_string(&tx_file)
                 .with_context(|| format!("failed to read transaction file: {tx_file}"))?;
-            let pin = pin.map(|p| p.parse::<Pin>()).transpose()?;
             let mode = if send {
                 SendMode::SignAndSubmit
             } else {
                 SendMode::SignOnly
             };
-            match ykada::api::sign_tx_file(
+            let payment_slot: Slot = payment_slot.into();
+            let (resolved_pin, touch_policy) =
+                resolve_pin_and_notify(payment_slot, pin, is_terminal)?;
+            let needs_touch = touch_policy != TouchPolicy::Never;
+            if needs_touch && is_terminal {
+                eprint!("Please touch your YubiKey...");
+            }
+            let result = ykada::api::sign_tx_file(
                 &content,
-                payment_slot.into(),
+                payment_slot,
                 stake_slot.into(),
                 network.into(),
                 mode,
-                pin,
+                resolved_pin,
             )
-            .context("failed to sign transaction")?
-            {
+            .context("failed to sign transaction")?;
+            if needs_touch && is_terminal {
+                eprint!("\r\x1b[K");
+            }
+            match result {
                 SendOutcome::Cbor(cbor) => println!("{}", hex::encode(&cbor)),
                 SendOutcome::TxHash(hash) => println!("Transaction ID: {hash}"),
             }
@@ -386,29 +435,44 @@ fn run(command: Commands) -> anyhow::Result<()> {
             only_sign,
             pin,
         } => {
+            use std::io::IsTerminal;
+            let is_terminal = std::io::stderr().is_terminal();
             let send_lovelace = match (ada, lovelace) {
                 (Some(a), None) => a * 1_000_000,
                 (None, Some(l)) => l,
                 _ => anyhow::bail!("provide either --ada or --lovelace"),
             };
-            let pin = pin.map(|p| p.parse::<Pin>()).transpose()?;
             let mode = match (dry_run, only_sign) {
                 (true, _) => SendMode::DryRun,
                 (_, true) => SendMode::SignOnly,
                 _ => SendMode::SignAndSubmit,
             };
-            match ykada::api::send_ada(
-                payment_slot.into(),
+            let payment_slot: Slot = payment_slot.into();
+            let (resolved_pin, touch_policy) = if matches!(mode, SendMode::DryRun) {
+                (None, TouchPolicy::Never)
+            } else {
+                resolve_pin_and_notify(payment_slot, pin, is_terminal)?
+            };
+            let needs_touch =
+                !matches!(mode, SendMode::DryRun) && touch_policy != TouchPolicy::Never;
+            if needs_touch && is_terminal {
+                eprint!("Please touch your YubiKey...");
+            }
+            let result = ykada::api::send_ada(
+                payment_slot,
                 stake_slot.into(),
                 network.into(),
                 &to,
                 send_lovelace,
                 fee,
                 mode,
-                pin,
+                resolved_pin,
             )
-            .context("failed to send ADA")?
-            {
+            .context("failed to send ADA")?;
+            if needs_touch && is_terminal {
+                eprint!("\r\x1b[K");
+            }
+            match result {
                 SendOutcome::Cbor(cbor) => println!("{}", hex::encode(&cbor)),
                 SendOutcome::TxHash(hash) => println!("Transaction ID: {hash}"),
             }

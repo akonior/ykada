@@ -1,7 +1,8 @@
 use crate::error::{YkadaError, YkadaResult};
-use crate::model::{Algorithm, ManagementKey, Pin, Slot};
+use crate::model::{Algorithm, ManagementKey, Pin, PinPolicy, Slot, TouchPolicy};
 use crate::ports::{
     DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
+    SlotPolicyReader,
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use std::convert::TryInto;
@@ -217,6 +218,20 @@ impl DeviceReader for PivYubiKey {
                 Ok(Some(VerifyingKey::from_bytes(&arr)?))
             }
             _ => Ok(None),
+        }
+    }
+}
+
+impl SlotPolicyReader for PivYubiKey {
+    fn read_slot_policy(&mut self, slot: Slot) -> YkadaResult<(PinPolicy, TouchPolicy)> {
+        let md = yubikey::piv::metadata(&mut self.device, slot.to_yubikey_slot_id())?;
+        match md.policy {
+            None => Ok((PinPolicy::Never, TouchPolicy::Never)),
+            Some((yubikey_pin, yubikey_touch)) => {
+                let pin_policy = PinPolicy::from_yubikey_pin_policy(yubikey_pin)?;
+                let touch_policy = TouchPolicy::from_yubikey_touch_policy(yubikey_touch)?;
+                Ok((pin_policy, touch_policy))
+            }
         }
     }
 }

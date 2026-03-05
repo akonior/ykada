@@ -8,8 +8,8 @@ use crate::ports::KeyConfig;
 use crate::use_cases::{
     fetch_balance_use_case, generate_key_use_case, generate_wallet_use_case,
     import_private_key_from_seed_phrase_use_case, import_private_key_in_der_format_use_case,
-    send_ada_use_case, sign_tx_file_use_case, wallet_info_use_case, SendAdaParams,
-    SignTxFileParams,
+    read_slot_policy_use_case, send_ada_use_case, sign_tx_file_use_case, wallet_info_use_case,
+    SendAdaParams, SignTxFileParams, SlotPolicyParams,
 };
 use ed25519_dalek::VerifyingKey;
 
@@ -119,6 +119,11 @@ pub fn sign_tx_file(
             pin,
         },
     )
+}
+
+pub fn read_slot_policy(slot: Slot) -> YkadaResult<(PinPolicy, TouchPolicy)> {
+    let finder = PivDeviceFinder;
+    read_slot_policy_use_case(&finder, SlotPolicyParams { slot })
 }
 
 pub fn import_private_key_from_seed_phrase(
