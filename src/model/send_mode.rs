@@ -5,6 +5,7 @@ pub enum SendMode {
     SignAndSubmit,
 }
 
+#[derive(Debug)]
 pub enum SendOutcome {
     Cbor(Vec<u8>),
     TxHash(String),

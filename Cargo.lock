@@ -2010,6 +2010,7 @@ name = "ykada"
 version = "0.4.0"
 dependencies = [
  "anyhow",
+ "bech32",
  "bip39",
  "clap",
  "ed25519-bip32",
@@ -2017,6 +2018,7 @@ dependencies = [
  "getrandom 0.4.3",
  "hex",
  "pallas-addresses",
+ "pallas-codec",
  "pallas-crypto",
  "pallas-primitives",
  "pallas-txbuilder",

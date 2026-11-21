@@ -55,6 +55,9 @@ pub enum YkadaError {
     #[error("Network error: {0}")]
     Network(String),
 
+    #[error("the transaction was signed but not submitted: {0}")]
+    NotSubmitted(String),
+
     #[error("Network error: {0}")]
     UreqError(Box<ureq::Error>),
 

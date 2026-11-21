@@ -1,5 +1,5 @@
 use pallas_addresses::Address;
-use pallas_primitives::{alonzo, conway};
+use pallas_primitives::{alonzo, conway, NetworkId, Nullable};
 
 use super::sign_external_tx::{body_hash, decode_tx, parse_tx_input};
 use crate::error::YkadaResult;
@@ -9,6 +9,9 @@ pub struct TxOutputSummary {
     pub address: String,
     pub lovelace: u64,
     pub has_tokens: bool,
+    // A datum or datum hash, or a reference script, attached to the output.
+    pub has_datum: bool,
+    pub has_script: bool,
 }
 
 // Read-only summary of a (possibly signed) transaction, plus local verification
@@ -18,16 +21,22 @@ pub struct TxSummary {
     pub inputs: Vec<String>,
     pub outputs: Vec<TxOutputSummary>,
     pub fee: u64,
+    pub validity_start: Option<u64>,
     pub ttl: Option<u64>,
-    // Body features beyond a plain payment (certificates, mint, …), for review before signing.
-    pub extras: Vec<&'static str>,
+    // Everything beyond a plain payment (certificates, mint, …), for review before signing.
+    pub extras: Vec<String>,
+    // false means the scripts are expected to fail and the collateral is taken instead.
+    pub is_valid: bool,
     pub witness_count: usize,
     pub witnesses_verified: usize,
 }
 
 pub(crate) fn summarize_tx(content: &str) -> YkadaResult<TxSummary> {
-    let cbor = parse_tx_input(content)?;
-    let tx = decode_tx(&cbor)?;
+    summarize_cbor(&parse_tx_input(content)?)
+}
+
+pub(crate) fn summarize_cbor(cbor: &[u8]) -> YkadaResult<TxSummary> {
+    let tx = decode_tx(cbor)?;
     let hash = *body_hash(&tx).as_bytes();
     let body = &tx.transaction_body;
     let witnesses = tx
@@ -46,8 +55,10 @@ pub(crate) fn summarize_tx(content: &str) -> YkadaResult<TxSummary> {
             .collect(),
         outputs: body.outputs.iter().map(summarize_output).collect(),
         fee: body.fee,
+        validity_start: body.validity_interval_start,
         ttl: body.ttl,
-        extras: body_extras(body),
+        extras: extras(&tx),
+        is_valid: tx.success,
         witness_count: witnesses.len(),
         witnesses_verified: witnesses
             .iter()
@@ -56,44 +67,116 @@ pub(crate) fn summarize_tx(content: &str) -> YkadaResult<TxSummary> {
     })
 }
 
-fn body_extras(body: &conway::TransactionBody<'_>) -> Vec<&'static str> {
+fn extras(tx: &conway::Tx<'_>) -> Vec<String> {
+    let body = &tx.transaction_body;
+    let witnesses = &tx.transaction_witness_set;
+    let count = |name: &str, n: usize| format!("{name} ({n})");
+    let mint = body.mint.as_ref().map(|policies| {
+        let assets: Vec<i64> = policies
+            .values()
+            .flat_map(|assets| assets.values().map(i64::from))
+            .collect();
+        format!(
+            "mint/burn ({} assets: {} minted, {} burned)",
+            assets.len(),
+            assets.iter().filter(|q| **q > 0).count(),
+            assets.iter().filter(|q| **q < 0).count()
+        )
+    });
+    let scripts = body.script_data_hash.is_some()
+        || witnesses.native_script.is_some()
+        || witnesses.plutus_v1_script.is_some()
+        || witnesses.plutus_v2_script.is_some()
+        || witnesses.plutus_v3_script.is_some();
     [
-        (body.certificates.is_some(), "certificates"),
-        (body.withdrawals.is_some(), "withdrawals"),
-        (body.mint.is_some(), "mint/burn"),
-        (body.script_data_hash.is_some(), "scripts"),
-        (body.collateral.is_some(), "collateral"),
-        (body.required_signers.is_some(), "required signers"),
-        (body.voting_procedures.is_some(), "votes"),
-        (body.proposal_procedures.is_some(), "governance proposals"),
-        (
-            body.treasury_value.is_some() || body.donation.is_some(),
-            "treasury",
-        ),
+        body.certificates
+            .as_ref()
+            .map(|c| count("certificates", c.len())),
+        body.withdrawals.as_ref().map(|w| {
+            format!(
+                "withdrawals ({} lovelace)",
+                w.values().fold(0u128, |sum, coin| sum + u128::from(*coin))
+            )
+        }),
+        mint,
+        scripts.then(|| "scripts".to_string()),
+        body.collateral
+            .as_ref()
+            .map(|c| count("collateral inputs", c.len())),
+        body.total_collateral
+            .map(|coin| format!("total collateral ({coin} lovelace)")),
+        body.collateral_return.as_ref().map(|o| {
+            format!(
+                "collateral return ({} lovelace)",
+                summarize_output(o).lovelace
+            )
+        }),
+        body.required_signers
+            .as_ref()
+            .map(|s| count("required signers", s.len())),
+        body.reference_inputs
+            .as_ref()
+            .map(|r| count("reference inputs", r.len())),
+        body.voting_procedures
+            .as_ref()
+            .map(|v| count("votes", v.len())),
+        body.proposal_procedures
+            .as_ref()
+            .map(|p| count("governance proposals", p.len())),
+        (body.treasury_value.is_some() || body.donation.is_some()).then(|| "treasury".to_string()),
+        matches!(tx.auxiliary_data, Nullable::Some(_)).then(|| "metadata".to_string()),
+        witnesses
+            .bootstrap_witness
+            .as_ref()
+            .map(|b| count("Byron witnesses, not verified", b.len())),
+        body.network_id.map(|id| match id {
+            NetworkId::Mainnet => "network ID mainnet".to_string(),
+            NetworkId::Testnet => "network ID testnet".to_string(),
+        }),
     ]
     .into_iter()
-    .filter_map(|(present, name)| present.then_some(name))
+    .flatten()
     .collect()
 }
 
+pub(crate) fn output_address<'a>(output: &'a conway::TransactionOutput<'_>) -> &'a [u8] {
+    match output {
+        conway::TransactionOutput::Legacy(o) => &o.address,
+        conway::TransactionOutput::PostAlonzo(o) => &o.address,
+    }
+}
+
 fn summarize_output(output: &conway::TransactionOutput<'_>) -> TxOutputSummary {
-    let (address, lovelace, has_tokens) = match output {
+    let (lovelace, has_tokens, has_datum, has_script) = match output {
         conway::TransactionOutput::Legacy(o) => match &o.amount {
-            alonzo::Value::Coin(c) => (&o.address, *c, false),
-            alonzo::Value::Multiasset(c, _) => (&o.address, *c, true),
+            alonzo::Value::Coin(c) => (*c, false, o.datum_hash.is_some(), false),
+            alonzo::Value::Multiasset(c, _) => (*c, true, o.datum_hash.is_some(), false),
         },
-        conway::TransactionOutput::PostAlonzo(o) => match &o.value {
-            conway::Value::Coin(c) => (&o.address, *c, false),
-            conway::Value::Multiasset(c, _) => (&o.address, *c, true),
-        },
+        conway::TransactionOutput::PostAlonzo(o) => {
+            let (has_datum, has_script) = (o.datum_option.is_some(), o.script_ref.is_some());
+            match &o.value {
+                conway::Value::Coin(c) => (*c, false, has_datum, has_script),
+                conway::Value::Multiasset(c, _) => (*c, true, has_datum, has_script),
+            }
+        }
     };
     TxOutputSummary {
-        address: Address::from_bytes(address)
-            .ok()
-            .and_then(|a| a.to_bech32().ok())
-            .unwrap_or_else(|| format!("<undecodable {}>", hex::encode(address.as_slice()))),
+        address: readable_address(output_address(output)),
         lovelace,
         has_tokens,
+        has_datum,
+        has_script,
+    }
+}
+
+// Shelley addresses in bech32, Byron addresses in base58, as wallets show them.
+fn readable_address(bytes: &[u8]) -> String {
+    match Address::from_bytes(bytes) {
+        Ok(Address::Byron(byron)) => byron.to_base58(),
+        Ok(address) => address
+            .to_bech32()
+            .unwrap_or_else(|_| format!("<undecodable {}>", hex::encode(bytes))),
+        Err(_) => format!("<undecodable {}>", hex::encode(bytes)),
     }
 }
 
@@ -139,5 +222,97 @@ mod tests {
     #[test]
     fn rejects_garbage() {
         assert!(summarize_tx("not a transaction").is_err());
+    }
+
+    use crate::test_vectors::RECIPIENT;
+    use pallas_crypto::hash::Hash;
+    use pallas_txbuilder::{BuildConway, Input, Output, StagingTransaction};
+
+    fn summary_of(tx: StagingTransaction) -> TxSummary {
+        let cbor = tx.build_conway_raw().unwrap().tx_bytes.0;
+        summarize_cbor(&cbor).unwrap()
+    }
+
+    fn payment() -> StagingTransaction {
+        StagingTransaction::new()
+            .input(Input::new(Hash::new([1; 32]), 0))
+            .output(Output::new(
+                Address::from_bech32(RECIPIENT).unwrap(),
+                2_000_000,
+            ))
+            .fee(200_000)
+    }
+
+    // Everything that changes what a signature authorizes must be visible before signing.
+    #[test]
+    fn shows_everything_beyond_a_plain_payment() {
+        let recipient = Address::from_bech32(RECIPIENT).unwrap();
+        let tx = payment()
+            .valid_from_slot(100)
+            .reference_input(Input::new(Hash::new([2; 32]), 0))
+            .collateral_input(Input::new(Hash::new([3; 32]), 0))
+            .collateral_output(Output::new(recipient, 4_000_000))
+            .disclosed_signer(Hash::new([4; 28]))
+            .network_id(0)
+            .add_auxiliary_data(vec![0xa1, 0x00, 0x61, 0x78])
+            .mint_asset(Hash::new([5; 28]), b"A".to_vec(), 3)
+            .unwrap()
+            .mint_asset(Hash::new([5; 28]), b"B".to_vec(), -1)
+            .unwrap();
+        let summary = summary_of(tx);
+        assert_eq!(summary.validity_start, Some(100));
+        [
+            "mint/burn (2 assets: 1 minted, 1 burned)",
+            "collateral inputs (1)",
+            "collateral return (4000000 lovelace)",
+            "required signers (1)",
+            "reference inputs (1)",
+            "metadata",
+            "network ID testnet",
+        ]
+        .iter()
+        .for_each(|extra| {
+            assert!(
+                summary.extras.contains(&extra.to_string()),
+                "missing {extra}: {:?}",
+                summary.extras
+            )
+        });
+    }
+
+    #[test]
+    fn a_plain_payment_has_no_extras() {
+        let summary = summary_of(payment());
+        assert!(summary.extras.is_empty(), "{:?}", summary.extras);
+        assert!(summary.is_valid);
+        assert_eq!(summary.validity_start, None);
+    }
+
+    #[test]
+    fn shows_datum_and_script_on_outputs() {
+        let recipient = Address::from_bech32(RECIPIENT).unwrap();
+        let output = Output::new(recipient, 2_000_000)
+            .set_datum_hash(Hash::new([6; 32]))
+            .set_inline_script(pallas_txbuilder::ScriptKind::PlutusV3, vec![0x01]);
+        let summary = summary_of(payment().output(output));
+        assert!(summary.outputs[1].has_datum && summary.outputs[1].has_script);
+        assert!(!summary.outputs[0].has_datum && !summary.outputs[0].has_script);
+    }
+
+    // is_valid = false forfeits the collateral; the flag must not pass unnoticed.
+    #[test]
+    fn reports_a_transaction_marked_invalid() {
+        let mut cbor = payment().build_conway_raw().unwrap().tx_bytes.0;
+        let flag = cbor.len() - 2;
+        assert_eq!(cbor[flag], 0xf5, "is_valid = true before the change");
+        cbor[flag] = 0xf4;
+        assert!(!summarize_cbor(&cbor).unwrap().is_valid);
+    }
+
+    #[test]
+    fn shows_byron_addresses_in_base58() {
+        let byron = "Ae2tdPwUPEZFRbyhz3cpfC2CumGzNkFBN2L42rcUc2yjQpEkxDbkPodpMAi";
+        let tx = payment().output(Output::new(byron.parse::<Address>().unwrap(), 2_000_000));
+        assert_eq!(summary_of(tx).outputs[1].address, byron);
     }
 }

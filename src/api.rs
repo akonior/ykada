@@ -1,16 +1,16 @@
 use crate::adapters::{KoiosClient, PivDeviceFinder};
 use crate::error::{YkadaError, YkadaResult};
 pub use crate::model::{
-    GeneratedWallet, ManagementKey, Network, Overwrite, Pin, PinPolicy, SeedPhrase, SendMode,
-    SendOutcome, TouchPolicy, WalletConfig, WalletInfo,
+    GeneratedWallet, ManagementKey, Network, Overwrite, Pin, PinPolicy, PreparedTx, SeedPhrase,
+    SendMode, SendOutcome, TouchPolicy, WalletConfig, WalletInfo,
 };
 use crate::model::{Utxo, PAYMENT_SLOT};
 use crate::ports::{DeviceFinder, SlotPolicyReader, UtxoFetcher};
 use crate::use_cases::{
-    generate_wallet_use_case, send_ada_use_case, sign_tx_file_use_case, summarize_tx,
-    wallet_info_use_case, SignTxFileParams,
+    finish_tx as finish_tx_use_case, generate_wallet_use_case, prepare_external_tx_use_case,
+    prepare_payment_use_case, summarize_tx, wallet_info_use_case, FinishTxParams,
 };
-pub use crate::use_cases::{SendAdaParams, TxOutputSummary, TxSummary};
+pub use crate::use_cases::{PaymentParams, TxOutputSummary, TxSummary};
 use pallas_addresses::ShelleyAddress;
 
 // `seed: None` generates a fresh random mnemonic.
@@ -40,28 +40,30 @@ fn total_lovelace(utxos: &[Utxo]) -> YkadaResult<u64> {
         .ok_or_else(|| YkadaError::Tx("balance overflows u64".into()))
 }
 
-pub fn send_ada(params: SendAdaParams) -> YkadaResult<SendOutcome> {
-    send_ada_use_case(
+// Build a payment; nothing is signed yet, so a PIN is needed only for `finish_tx`.
+pub fn prepare_payment(params: PaymentParams) -> YkadaResult<PreparedTx> {
+    prepare_payment_use_case(
         &PivDeviceFinder,
         &KoiosClient::for_network(params.network),
         params,
     )
 }
 
-pub fn sign_tx(
-    tx_file_content: &str,
+// Read a transaction built elsewhere and summarize it for review before signing.
+pub fn prepare_external_tx(
+    content: &str,
     network: Network,
-    mode: SendMode,
-    pin: Option<Pin>,
-) -> YkadaResult<SendOutcome> {
-    sign_tx_file_use_case(
+) -> YkadaResult<(PreparedTx, TxSummary)> {
+    prepare_external_tx_use_case(&PivDeviceFinder, content, network)
+}
+
+pub fn finish_tx(tx: PreparedTx, mode: SendMode, pin: Option<Pin>) -> YkadaResult<SendOutcome> {
+    let submitter = KoiosClient::for_network(tx.network);
+    finish_tx_use_case(
         &PivDeviceFinder,
-        &KoiosClient::for_network(network),
-        SignTxFileParams {
-            tx_file_content: tx_file_content.to_owned(),
-            mode,
-            pin,
-        },
+        &submitter,
+        tx,
+        FinishTxParams { mode, pin },
     )
 }
 

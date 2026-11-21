@@ -64,11 +64,12 @@ ykada send --network mainnet --to addr1... --ada 5
 |--------|---------|
 | `--to ADDRESS` | The recipient. It must be an address on the selected network |
 | `--ada N` or `--lovelace N` | The amount, in whole ADA or in lovelace (1 ADA = 1,000,000 lovelace) |
-| `--fee LOVELACE` | The fee. Default 200000 (0.2 ADA); it is not estimated |
+| `--fee LOVELACE` | The fee. Default 200000 (0.2 ADA). It is not estimated, but ykada refuses a fee above 1 ADA, and a fee below the minimum for the transaction's size, for which it prints the fee to use |
 | `--dry-run` | Only build the transaction and print it unsigned (CBOR hex). No PIN |
 | `--only-sign` | Sign on the YubiKey and print the signed transaction, but do not submit it |
 
-On mainnet, ykada shows the amount, the recipient and the fee, and submits only after you type
+ykada checks the address, the amounts and your funds before it asks for the PIN. On mainnet it
+then shows the amount and the fee in ADA and the recipient, and submits only after you type
 `yes`.
 
 How the transaction is built:
@@ -95,15 +96,20 @@ ykada sign-tx --network mainnet --tx-file unsigned.json --send
 
 | Option | Meaning |
 |--------|---------|
-| `--tx-file FILE` | The transaction: a JSON export with a `cborHex` field, or bare CBOR hex. Without it, ykada reads stdin |
+| `--tx-file FILE` | The transaction: a JSON export with a `cborHex` field, or bare CBOR hex (line breaks and a `0x` prefix are fine). Without it, or with `-`, ykada reads stdin. Input larger than 1 MiB, or with bytes after the transaction, is refused |
 | `--send` | Also submit the signed transaction and print its ID. Without it, ykada prints the signed CBOR hex |
 
-Before it asks for the PIN, `sign-tx` shows the inputs, outputs and fee, and any extra
-features: certificates, withdrawals, minting, scripts, collateral, required signers, votes,
-governance proposals and treasury fields. Read them, because the YubiKey has no screen.
+Before it asks for the PIN, `sign-tx` shows the inputs, the outputs (with any tokens, datum or
+script on them), the fee and the validity slots. It also lists everything beyond a plain payment:
+certificates, withdrawals and their amount, minting and burning, scripts, collateral and the
+collateral return, required signers, reference inputs, votes, governance proposals, treasury
+fields, metadata and a network ID, and warns when the transaction is marked invalid, which
+forfeits the collateral. Read them, because the YubiKey has no screen.
 
-It adds the wallet's signature without changing the transaction body, so the transaction ID and
-any other signatures stay valid. Signing again replaces ykada's earlier signature. A mainnet
+It adds the wallet's signature and changes nothing else: the body, the other witnesses and
+scripts keep their exact bytes, so the transaction ID, any other signatures and a fee computed
+for that size stay valid. Signing again replaces ykada's earlier signature. A transaction for
+another network than `--network`, by its outputs or its network ID, is refused. A mainnet
 `--send` asks you to type `yes`, so it needs `--tx-file` rather than stdin.
 
 ## decode-tx
@@ -114,6 +120,6 @@ Shows a transaction and checks its signatures, offline.
 ykada decode-tx --tx-file signed.cbor
 ```
 
-It prints the body hash, which is the transaction ID, the inputs, outputs, fee and validity
-slot, and `Witnesses verified: n/m`. It reads `--tx-file`, or stdin when it is omitted, in the
+It prints the body hash, which is the transaction ID, and the same summary as `sign-tx`, then
+`Witnesses verified: n/m`. It reads `--tx-file`, or stdin when it is omitted, in the
 same formats as `sign-tx`. Any signed transaction can be checked this way, without a YubiKey.

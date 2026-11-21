@@ -6,6 +6,7 @@ use crate::error::{YkadaError, YkadaResult};
 use crate::logic::select_inputs;
 use crate::model::Utxo;
 use crate::ports::{TipFetcher, UtxoFetcher};
+use crate::use_cases::sign_external_tx::signed_size;
 
 pub(crate) struct TransactionParams {
     pub recipient: Address,
@@ -29,7 +30,48 @@ where
     let built = build_staged(&utxos, tip_slot, &params)?
         .build_conway_raw()
         .map_err(|e| YkadaError::Tx(format!("tx build error: {e}")))?;
+    check_fee_covers_size(&built.tx_bytes.0, params.fee_lovelace)?;
     Ok(built.tx_bytes.0)
+}
+
+// The amounts alone, before the device or the network is used.
+pub(crate) fn check_amounts(send_lovelace: u64, fee_lovelace: u64) -> YkadaResult<()> {
+    match (
+        send_lovelace < MIN_UTXO_LOVELACE,
+        fee_lovelace > MAX_FEE_LOVELACE,
+    ) {
+        (true, _) => Err(YkadaError::Tx(format!(
+            "send amount {send_lovelace} lovelace is below the min-UTxO floor of {MIN_UTXO_LOVELACE} lovelace"
+        ))),
+        (false, true) => Err(YkadaError::Tx(format!(
+            "--fee {fee_lovelace} lovelace is more than 1 ADA ({MAX_FEE_LOVELACE} lovelace), \
+             which no payment ykada builds can need; check the value"
+        ))),
+        (false, false) => Ok(()),
+    }
+}
+
+// Mainnet, PreProd and Preview use the same fee parameters: fee >= a * size + b.
+const MIN_FEE_A: u64 = 44;
+const MIN_FEE_B: u64 = 155_381;
+
+// The largest transaction the ledger accepts (16 KiB) needs 0.88 ADA, so a higher --fee is a typo.
+const MAX_FEE_LOVELACE: u64 = 1_000_000;
+const MAX_TX_SIZE: u64 = 16_384;
+const _: () = assert!(MIN_FEE_A * MAX_TX_SIZE + MIN_FEE_B <= MAX_FEE_LOVELACE);
+
+// Catch a fee the node would reject (FeeTooSmallUTxO) before the YubiKey signs.
+fn check_fee_covers_size(unsigned: &[u8], fee_lovelace: u64) -> YkadaResult<()> {
+    let size = signed_size(unsigned)?;
+    let needed = MIN_FEE_A * size as u64 + MIN_FEE_B;
+    match fee_lovelace >= needed {
+        true => Ok(()),
+        false => Err(YkadaError::Tx(format!(
+            "the fee {fee_lovelace} lovelace is below the {needed} lovelace this {size}-byte \
+             transaction needs; pass --fee {}",
+            needed.div_ceil(1000) * 1000
+        ))),
+    }
 }
 
 // Conservative ADA-only min-UTxO floor. The exact value derives from the
@@ -45,13 +87,6 @@ fn build_staged(
     tip_slot: u64,
     params: &TransactionParams,
 ) -> YkadaResult<StagingTransaction> {
-    if params.send_lovelace < MIN_UTXO_LOVELACE {
-        return Err(YkadaError::Tx(format!(
-            "send amount {} lovelace is below the min-UTxO floor of {MIN_UTXO_LOVELACE} lovelace",
-            params.send_lovelace
-        )));
-    }
-
     let required = params
         .send_lovelace
         .checked_add(params.fee_lovelace)
@@ -167,8 +202,42 @@ mod tests {
 
     #[test]
     fn test_send_below_min_utxo_errors() {
-        let msg = build_error(&[10_000_000], 500_000);
+        let msg = check_amounts(999_999, 200_000).unwrap_err().to_string();
         assert!(msg.contains("min-UTxO"), "got: {msg}");
+        assert!(check_amounts(MIN_UTXO_LOVELACE, 200_000).is_ok());
+    }
+
+    // An extra zero in --fee must not burn ADA.
+    #[test]
+    fn test_fee_above_one_ada_is_refused() {
+        let msg = check_amounts(2_000_000, 2_000_000).unwrap_err().to_string();
+        assert!(msg.contains("more than 1 ADA"), "got: {msg}");
+        assert!(check_amounts(2_000_000, MAX_FEE_LOVELACE).is_ok());
+    }
+
+    // Many small UTxOs make a large transaction that the default fee doesn't cover.
+    #[test]
+    fn test_fee_too_small_for_the_size_is_refused_with_the_fee_to_use() {
+        let utxos = [2_000_000; 40];
+        let msg = build_error(&utxos, 58_000_000);
+        assert!(msg.contains("transaction needs; pass --fee"), "got: {msg}");
+        let fee: u64 = msg.rsplit(' ').next().unwrap().parse().unwrap();
+        let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
+        let chain = FakeChain::new(&utxos);
+        let params = TransactionParams {
+            recipient: Address::from_bech32(RECIPIENT).unwrap(),
+            send_lovelace: 58_000_000,
+            fee_lovelace: fee,
+            change_address: derive_wallet_keys(&seed, Network::Preview).address,
+        };
+        assert!(build_transaction_use_case(&chain, &chain, params).is_ok());
+    }
+
+    // A fee the chain accepted must pass the check too: the formula must not overestimate.
+    #[test]
+    fn test_min_fee_formula_accepts_a_confirmed_transaction() {
+        let tx = hex::decode(crate::test_vectors::ON_CHAIN_TX_CBOR).unwrap();
+        assert!(MIN_FEE_A * tx.len() as u64 + MIN_FEE_B <= 200_000);
     }
 
     #[test]

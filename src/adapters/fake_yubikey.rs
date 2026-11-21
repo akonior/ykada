@@ -175,6 +175,17 @@ impl SlotPolicyReader for FakeYubiKey {
     }
 }
 
+// A computer with no YubiKey connected.
+pub(crate) struct NoDevice;
+
+impl DeviceFinder for NoDevice {
+    type Device = FakeYubiKey;
+
+    fn find_first(&self) -> YkadaResult<Self::Device> {
+        Err(YkadaError::NotFound)
+    }
+}
+
 pub(crate) struct FakeDeviceFinder(pub(crate) FakeYubiKey);
 
 impl DeviceFinder for FakeDeviceFinder {

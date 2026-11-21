@@ -5,7 +5,7 @@ use clap::{Args, Parser, Subcommand};
 use secrecy::ExposeSecret;
 
 use ykada::{
-    GeneratedWallet, ManagementKey, Network, Overwrite, Pin, PinPolicy, SeedPhrase, SendAdaParams,
+    GeneratedWallet, ManagementKey, Network, Overwrite, PaymentParams, Pin, PinPolicy, SeedPhrase,
     SendMode, SendOutcome, TouchPolicy, TxSummary, WalletConfig,
 };
 
@@ -76,7 +76,7 @@ enum Commands {
 
     /// Sign a transaction built elsewhere (Eternl/cardano-cli JSON or CBOR hex)
     SignTx {
-        /// Transaction file; omit to read stdin
+        /// Transaction file; omit (or pass -) to read stdin
         #[arg(long)]
         tx_file: Option<String>,
         /// Also submit to the network (prints the transaction ID)
@@ -88,7 +88,7 @@ enum Commands {
 
     /// Decode a transaction and verify its witness signatures locally
     DecodeTx {
-        /// Transaction file; omit to read stdin
+        /// Transaction file; omit (or pass -) to read stdin
         #[arg(long)]
         tx_file: Option<String>,
     },
@@ -121,6 +121,14 @@ fn main() {
 }
 
 const LOVELACE_PER_ADA: u64 = 1_000_000;
+
+fn format_ada(lovelace: u64) -> String {
+    format!(
+        "{}.{:06}",
+        lovelace / LOVELACE_PER_ADA,
+        lovelace % LOVELACE_PER_ADA
+    )
+}
 
 // ykada's PIV key model gives different addresses than other wallets for the same mnemonic.
 const MNEMONIC_SCOPE_NOTE: &str = "Note: this mnemonic restores the wallet only with ykada. \
@@ -156,11 +164,7 @@ fn run(command: Commands) -> anyhow::Result<()> {
             let balance =
                 ykada::fetch_balance(&addr, network).context("failed to fetch balance")?;
             println!("Cardano address:         {}", addr.to_bech32()?);
-            println!(
-                "Balance:                 {}.{:06} ADA",
-                balance / LOVELACE_PER_ADA,
-                balance % LOVELACE_PER_ADA
-            );
+            println!("Balance:                 {} ADA", format_ada(balance));
         }
 
         Commands::Send {
@@ -183,24 +187,26 @@ fn run(command: Commands) -> anyhow::Result<()> {
                 (false, true) => SendMode::SignOnly,
                 (false, false) => SendMode::SignAndSubmit,
             };
+            // Build first: an address, amount or funds problem shows before any PIN prompt.
+            let tx = ykada::prepare_payment(PaymentParams {
+                network,
+                recipient: to.clone(),
+                send_lovelace,
+                fee_lovelace: fee,
+            })
+            .context("failed to send ADA")?;
             if mode == SendMode::SignAndSubmit && network == Network::Mainnet {
                 confirm_mainnet(&format!(
-                    "Send {send_lovelace} lovelace to {to} (fee {fee}) on MAINNET?"
+                    "Send {} ADA to {to} with a fee of {} ADA on MAINNET?",
+                    format_ada(send_lovelace),
+                    format_ada(fee)
                 ))?;
             }
             let pin = match mode {
                 SendMode::DryRun => None,
                 SendMode::SignOnly | SendMode::SignAndSubmit => prepare_signing()?,
             };
-            let outcome = ykada::send_ada(SendAdaParams {
-                network,
-                recipient: to,
-                send_lovelace,
-                fee_lovelace: fee,
-                mode,
-                pin,
-            })
-            .context("failed to send ADA")?;
+            let outcome = ykada::finish_tx(tx, mode, pin).context("failed to send ADA")?;
             clear_status_line();
             print_outcome(outcome);
         }
@@ -211,20 +217,23 @@ fn run(command: Commands) -> anyhow::Result<()> {
             network,
         } => {
             let content = read_input(tx_file)?;
+            let (tx, summary) = ykada::prepare_external_tx(&content, network)
+                .context("failed to decode transaction")?;
             // Never sign blind: show what is about to be signed.
-            let summary = ykada::decode_tx(&content).context("failed to decode transaction")?;
             eprintln!("Signing transaction:");
             print_summary(&mut std::io::stderr(), &summary)?;
-            let mode = match send {
-                true => SendMode::SignAndSubmit,
-                false => SendMode::SignOnly,
+            let (mode, failed) = match send {
+                true => (
+                    SendMode::SignAndSubmit,
+                    "failed to sign and submit transaction",
+                ),
+                false => (SendMode::SignOnly, "failed to sign transaction"),
             };
             if send && network == Network::Mainnet {
                 confirm_mainnet("Submit this transaction to MAINNET?")?;
             }
             let pin = prepare_signing()?;
-            let outcome = ykada::sign_tx(&content, network, mode, pin)
-                .context("failed to sign transaction")?;
+            let outcome = ykada::finish_tx(tx, mode, pin).context(failed)?;
             clear_status_line();
             print_outcome(outcome);
         }
@@ -341,17 +350,33 @@ fn confirm_mainnet(question: &str) -> anyhow::Result<()> {
     }
 }
 
+// A transaction is at most 16 KiB (32 KiB as hex): far larger input is not one, and reading
+// it whole (say, from /dev/zero) would only use up memory.
+const MAX_INPUT_BYTES: u64 = 1 << 20;
+
+// `--tx-file -` means stdin, as with other tools.
 fn read_input(tx_file: Option<String>) -> anyhow::Result<String> {
-    match tx_file {
-        Some(path) => std::fs::read_to_string(&path)
-            .with_context(|| format!("failed to read transaction file: {path}")),
-        None => {
-            let mut buf = String::new();
-            std::io::stdin()
-                .read_to_string(&mut buf)
-                .context("failed to read transaction from stdin")?;
-            Ok(buf)
+    match tx_file.as_deref() {
+        None | Some("-") => read_limited(std::io::stdin(), "stdin"),
+        Some(path) => std::fs::File::open(path)
+            .with_context(|| format!("failed to read transaction file: {path}"))
+            .and_then(|file| read_limited(file, path)),
+    }
+}
+
+fn read_limited(input: impl Read, source: &str) -> anyhow::Result<String> {
+    let mut bytes = Vec::new();
+    input
+        .take(MAX_INPUT_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .with_context(|| format!("failed to read transaction from {source}"))?;
+    match bytes.len() as u64 > MAX_INPUT_BYTES {
+        true => {
+            anyhow::bail!("{source} holds more than 1 MiB; a Cardano transaction is at most 16 KiB")
         }
+        false => String::from_utf8(bytes).with_context(|| {
+            format!("{source} is not text: expected transaction JSON or CBOR hex")
+        }),
     }
 }
 
@@ -371,15 +396,28 @@ fn print_summary(out: &mut dyn Write, summary: &TxSummary) -> std::io::Result<()
         .try_for_each(|input| writeln!(out, "  {input}"))?;
     writeln!(out, "Outputs ({}):", summary.outputs.len())?;
     summary.outputs.iter().try_for_each(|o| {
-        let tokens = match o.has_tokens {
-            true => " + tokens",
-            false => "",
-        };
-        writeln!(out, "  {} lovelace{tokens} -> {}", o.lovelace, o.address)
+        let attached: String = [
+            (o.has_tokens, " + tokens"),
+            (o.has_datum, " + datum"),
+            (o.has_script, " + script"),
+        ]
+        .iter()
+        .filter_map(|(present, label)| present.then_some(*label))
+        .collect();
+        writeln!(out, "  {} lovelace{attached} -> {}", o.lovelace, o.address)
     })?;
     writeln!(out, "Fee:                   {} lovelace", summary.fee)?;
     if !summary.extras.is_empty() {
         writeln!(out, "Also contains:         {}", summary.extras.join(", "))?;
+    }
+    if !summary.is_valid {
+        writeln!(
+            out,
+            "WARNING:               marked invalid: the scripts are expected to fail and the collateral is taken"
+        )?;
+    }
+    if let Some(start) = summary.validity_start {
+        writeln!(out, "Valid from:            slot {start}")?;
     }
     match summary.ttl {
         Some(ttl) => writeln!(out, "TTL (invalid_from):    slot {ttl}")?,
@@ -390,4 +428,31 @@ fn print_summary(out: &mut dyn Write, summary: &TxSummary) -> std::io::Result<()
         "Witnesses verified:    {}/{}",
         summary.witnesses_verified, summary.witness_count
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_input_up_to_the_limit_is_read() {
+        let text = "a".repeat(MAX_INPUT_BYTES as usize);
+        assert_eq!(read_limited(text.as_bytes(), "test").unwrap(), text);
+    }
+
+    // An endless input (like /dev/zero) stops at the limit instead of filling memory.
+    #[test]
+    fn test_input_over_the_limit_is_refused() {
+        let endless = std::io::repeat(b'0');
+        let msg = read_limited(endless, "test").unwrap_err().to_string();
+        assert!(msg.contains("more than 1 MiB"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_binary_input_is_refused() {
+        let msg = read_limited(&[0xff, 0xfe][..], "test")
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("is not text"), "got: {msg}");
+    }
 }
