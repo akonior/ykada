@@ -125,10 +125,22 @@ impl From<SubmitError> for YkadaError {
     }
 }
 
+// The node's word for inputs that are already spent: by this very transaction if it is already
+// on the chain, or by an earlier one that is still waiting in the mempool.
+const SPENT_INPUTS: [&str; 2] = ["All inputs are spent", "BadInputsUTxO"];
+
 fn classify_submit_failure(code: u16, body: String) -> SubmitError {
     // Bound the error body so a hostile/huge response can't blow up the message.
     let shown: String = body.chars().take(256).collect();
-    let error = YkadaError::Network(format!("HTTP {code}: {shown}"));
+    let hint = match SPENT_INPUTS.iter().any(|marker| body.contains(marker)) {
+        true => {
+            "its inputs are already spent: either this transaction is already on the \
+                 chain, or one you sent moments ago spent them and is not confirmed yet (then \
+                 wait a minute and try again). "
+        }
+        false => "",
+    };
+    let error = YkadaError::Network(format!("{hint}HTTP {code}: {shown}"));
     match body.contains("TxCmdTxSubmitConnectionError") {
         true => SubmitError::NodeUnreachable(error),
         false => SubmitError::Rejected(error),
@@ -215,6 +227,15 @@ mod tests {
     fn test_validation_error_is_final() {
         let failure = classify_submit_failure(400, REJECTED_BODY.into());
         assert!(matches!(failure, SubmitError::Rejected(_)));
+    }
+
+    // The raw node message reads as if this payment went through; it may not have.
+    #[test]
+    fn test_spent_inputs_are_explained() {
+        let body = r#"{"contents":"ConwayMempoolFailure \"All inputs are spent. Transaction has probably already been included\""}"#;
+        let msg = YkadaError::from(classify_submit_failure(400, body.into())).to_string();
+        assert!(msg.contains("one you sent moments ago"), "got: {msg}");
+        assert!(msg.contains("All inputs are spent"), "got: {msg}");
     }
 
     #[test]

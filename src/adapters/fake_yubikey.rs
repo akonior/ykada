@@ -91,7 +91,7 @@ impl PinVerifier for FakeYubiKey {
     fn verify_pin(&mut self, pin: &Pin) -> YkadaResult<()> {
         match pin.as_bytes() == Pin::DEFAULT {
             true => Ok(()),
-            false => Err(yubikey::Error::WrongPin { tries: 2 }.into()),
+            false => Err(YkadaError::WrongPin { tries: 2 }),
         }
     }
 }

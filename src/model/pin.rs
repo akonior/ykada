@@ -43,10 +43,14 @@ impl fmt::Debug for Pin {
 
 #[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PinError {
-    #[error("PIN must be at least {min} characters", min = Pin::MIN_LENGTH)]
+    #[error("PIN must be at least {min} bytes long", min = Pin::MIN_LENGTH)]
     TooShort,
 
-    #[error("PIN must be at most {max} characters", max = Pin::MAX_LENGTH)]
+    // A PIV PIN is 6 to 8 bytes; letters outside ASCII take 2 or more bytes each.
+    #[error(
+        "PIN must be at most {max} bytes long (each character outside ASCII takes 2 or more)",
+        max = Pin::MAX_LENGTH
+    )]
     TooLong,
 }
 
@@ -68,6 +72,14 @@ mod tests {
     #[test]
     fn test_pin_too_long() {
         assert_eq!(Pin::from_str("123456789").unwrap_err(), PinError::TooLong);
+    }
+
+    // Five letters, ten bytes: the limit is in bytes, and the message must say so.
+    #[test]
+    fn test_pin_limit_counts_bytes() {
+        let err = Pin::from_str("ąęółś").unwrap_err();
+        assert_eq!(err, PinError::TooLong);
+        assert!(err.to_string().contains("bytes"));
     }
 
     #[test]

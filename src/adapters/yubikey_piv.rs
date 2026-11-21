@@ -24,17 +24,34 @@ impl DeviceFinder for PivDeviceFinder {
 
     fn find_first(&self) -> YkadaResult<Self::Device> {
         let mut readers = Context::open()?;
+        let opened: Vec<_> = readers.iter()?.map(|reader| reader.open()).collect();
+        pick_device(opened).map(PivYubiKey::new)
+    }
+}
 
-        let devices: Vec<YubiKey> = readers.iter()?.filter_map(|r| r.open().ok()).collect();
+// Exactly one YubiKey must open. A reader that fails to open is reported rather than counted
+// as absent: a YubiKey held by another program (gpg's scdaemon, for one) fails that way.
+fn pick_device<T>(opened: Vec<Result<T, yubikey::Error>>) -> YkadaResult<T> {
+    let (devices, failures): (Vec<_>, Vec<_>) = opened.into_iter().partition(Result::is_ok);
+    let mut devices: Vec<T> = devices.into_iter().filter_map(Result::ok).collect();
+    let failures: Vec<yubikey::Error> = failures.into_iter().filter_map(Result::err).collect();
+    match (devices.len(), failures.first()) {
+        (1, _) => Ok(devices.remove(0)),
+        (0, None) => Err(YkadaError::NotFound),
+        (0, Some(e)) => Err(YkadaError::DeviceUnavailable {
+            reason: e.to_string(),
+        }),
+        (count, _) => Err(YkadaError::MultipleDevicesFound { count }),
+    }
+}
 
-        match devices.len() {
-            0 => Err(YkadaError::NotFound),
-            1 => {
-                let yk = devices.into_iter().next().expect("length checked above");
-                Ok(PivYubiKey::new(yk))
-            }
-            count => Err(YkadaError::MultipleDevicesFound { count }),
-        }
+// PIN and signing failures in words a user can act on.
+pub(crate) fn signing_error(e: yubikey::Error) -> YkadaError {
+    match e {
+        yubikey::Error::WrongPin { tries } => YkadaError::WrongPin { tries },
+        yubikey::Error::PinLocked => YkadaError::PinBlocked,
+        yubikey::Error::AuthenticationError => YkadaError::SigningRefused,
+        other => YkadaError::YubikeyLib(other),
     }
 }
 
@@ -75,7 +92,9 @@ impl ManagementKeyVerifier for PivYubiKey {
 
 impl PinVerifier for PivYubiKey {
     fn verify_pin(&mut self, pin: &Pin) -> YkadaResult<()> {
-        Ok(self.device.verify_pin(pin.as_bytes())?)
+        self.device
+            .verify_pin(pin.as_bytes())
+            .map_err(signing_error)
     }
 }
 
@@ -192,12 +211,78 @@ impl Signer for PivYubiKey {
             data,
             AlgorithmId::Ed25519,
             slot.to_yubikey_slot_id(),
-        )?;
+        )
+        .map_err(signing_error)?;
         signature
             .as_slice()
             .try_into()
             .map_err(|_| YkadaError::InvalidSignatureLength {
                 actual: signature.len(),
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_one_yubikey_is_picked() {
+        assert_eq!(pick_device(vec![Ok(7)]).unwrap(), 7);
+    }
+
+    // Another reader (a laptop's card slot) failing to open doesn't hide the YubiKey.
+    #[test]
+    fn test_a_failing_extra_reader_is_ignored() {
+        let opened = vec![Err(yubikey::Error::GenericError), Ok(7)];
+        assert_eq!(pick_device(opened).unwrap(), 7);
+    }
+
+    #[test]
+    fn test_no_reader_means_no_yubikey() {
+        assert!(matches!(
+            pick_device::<u8>(vec![]),
+            Err(YkadaError::NotFound)
+        ));
+    }
+
+    // A YubiKey held by gpg fails to open: say so instead of "no YubiKey found".
+    #[test]
+    fn test_a_reader_that_fails_to_open_is_reported() {
+        let msg = pick_device::<u8>(vec![Err(yubikey::Error::PcscError { inner: None })])
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("could not be opened"), "got: {msg}");
+        assert!(msg.contains("gpgconf --kill scdaemon"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_two_yubikeys_are_refused() {
+        assert!(matches!(
+            pick_device(vec![Ok(1), Ok(2)]),
+            Err(YkadaError::MultipleDevicesFound { count: 2 })
+        ));
+    }
+
+    #[test]
+    fn test_wrong_pin_says_how_many_tries_are_left() {
+        let msg = signing_error(yubikey::Error::WrongPin { tries: 2 }).to_string();
+        assert_eq!(
+            msg,
+            "wrong PIN: 2 attempt(s) left before the PIN is blocked"
+        );
+    }
+
+    #[test]
+    fn test_blocked_pin_says_how_to_unblock_it() {
+        let msg = signing_error(yubikey::Error::PinLocked).to_string();
+        assert!(msg.contains("unblock-pin"), "got: {msg}");
+    }
+
+    // On the signing path an authentication error means no touch (or no fresh PIN).
+    #[test]
+    fn test_touch_timeout_is_explained() {
+        let msg = signing_error(yubikey::Error::AuthenticationError).to_string();
+        assert!(msg.contains("not touched in time"), "got: {msg}");
     }
 }

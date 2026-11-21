@@ -19,6 +19,28 @@ pub enum YkadaError {
     #[error("No YubiKey device found - please connect a YubiKey")]
     NotFound,
 
+    #[error(
+        "a YubiKey seems to be connected but could not be opened ({reason}). Another program \
+         may be using it, for example gpg (run `gpgconf --kill scdaemon`): close it or replug \
+         the YubiKey"
+    )]
+    DeviceUnavailable { reason: String },
+
+    #[error("wrong PIN: {tries} attempt(s) left before the PIN is blocked")]
+    WrongPin { tries: u8 },
+
+    #[error(
+        "the PIN is blocked after too many wrong attempts; unblock it with \
+         `ykman piv access unblock-pin` (this needs the PUK)"
+    )]
+    PinBlocked,
+
+    #[error(
+        "the YubiKey did not sign: it was not touched in time (it waits about 15 seconds), \
+         or it needs the PIN again"
+    )]
+    SigningRefused,
+
     #[error("Multiple YubiKeys detected ({count}) - please connect only one")]
     MultipleDevicesFound { count: usize },
 

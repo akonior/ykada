@@ -13,19 +13,41 @@ impl fmt::Debug for SeedPhrase {
     }
 }
 
+// The messages never quote a word of the phrase: errors end up in terminals and logs.
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum SeedPhraseError {
-    #[error("Invalid mnemonic")]
-    InvalidMnemonic(#[from] bip39::Error),
+    #[error("{0}")]
+    InvalidMnemonic(String),
     #[error("OS entropy source unavailable")]
     EntropyUnavailable(getrandom::Error),
 }
 
+impl From<bip39::Error> for SeedPhraseError {
+    fn from(e: bip39::Error) -> Self {
+        SeedPhraseError::InvalidMnemonic(match e {
+            bip39::Error::BadWordCount(n) => {
+                format!("it has {n} words; a mnemonic has 12, 15, 18, 21 or 24")
+            }
+            bip39::Error::UnknownWord(index) => {
+                format!("word {} is not in the BIP39 English word list", index + 1)
+            }
+            bip39::Error::InvalidChecksum => {
+                "the checksum doesn't match: a word is wrong, or two words are swapped".into()
+            }
+            bip39::Error::BadEntropyBitCount(_) | bip39::Error::AmbiguousLanguages(_) => {
+                "it is not a valid BIP39 mnemonic".into()
+            }
+        })
+    }
+}
+
+// Accepts the phrase as people type or save it: any case, any spacing, a leading BOM.
 impl TryFrom<&str> for SeedPhrase {
     type Error = SeedPhraseError;
 
     fn try_from(phrase: &str) -> Result<Self, Self::Error> {
-        let mnemonic = Mnemonic::parse_in(Language::English, phrase)?;
+        let normalized = phrase.trim_start_matches('\u{feff}').to_lowercase();
+        let mnemonic = Mnemonic::parse_in(Language::English, normalized.as_str())?;
         Ok(SeedPhrase(mnemonic))
     }
 }
@@ -70,6 +92,43 @@ mod tests {
         let phrase = "invalid invalid invalid invalid invalid invalid invalid invalid invalid invalid invalid invalid";
         let result = SeedPhrase::try_from(phrase);
         assert!(result.is_err());
+    }
+
+    // Numbered from 1, as people count words, and never quoting the word itself.
+    #[test]
+    fn test_unknown_word_is_numbered_from_one_and_not_quoted() {
+        let phrase = TEST_PHRASE.replacen("test", "zzzzzz", 1);
+        let msg = SeedPhrase::try_from(phrase.as_str())
+            .unwrap_err()
+            .to_string();
+        assert_eq!(msg, "word 1 is not in the BIP39 English word list");
+    }
+
+    #[test]
+    fn test_wrong_word_count_is_explained() {
+        let msg = SeedPhrase::try_from("test walk nut")
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("it has 3 words"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_swapped_words_fail_the_checksum() {
+        let words: Vec<&str> = TEST_PHRASE.split_whitespace().collect();
+        let swapped = [&[words[1], words[0]][..], &words[2..]].concat().join(" ");
+        let msg = SeedPhrase::try_from(swapped.as_str())
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("checksum"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_upper_case_and_a_bom_are_the_same_phrase() {
+        let shouted = format!("\u{feff}{}", TEST_PHRASE.to_uppercase());
+        assert_eq!(
+            SeedPhrase::try_from(shouted.as_str()).unwrap(),
+            SeedPhrase::try_from(TEST_PHRASE).unwrap()
+        );
     }
 
     #[test]
