@@ -15,3 +15,7 @@ targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
 install-path = "CARGO_HOME"
 # Whether to install an updater program
 install-updater = true
+
+# GitHub no longer runs macos-14, the default runner for aarch64-apple-darwin in dist 0.30.3
+[dist.github-custom-runners]
+aarch64-apple-darwin = "macos-15"
