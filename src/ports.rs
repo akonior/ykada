@@ -1,5 +1,3 @@
-mod balance_fetcher;
-pub(crate) mod contract_tests;
 mod device_finder;
 mod device_reader;
 mod key_manager;
@@ -11,7 +9,6 @@ mod tip_fetcher;
 mod tx_submitter;
 mod utxo_fetcher;
 
-pub(crate) use balance_fetcher::BalanceFetcher;
 pub(crate) use device_finder::DeviceFinder;
 pub(crate) use device_reader::DeviceReader;
 pub(crate) use key_manager::{KeyConfig, KeyManager};

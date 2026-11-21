@@ -9,20 +9,8 @@ pub struct KeyConfig {
     pub touch_policy: TouchPolicy,
 }
 
-impl Default for KeyConfig {
-    fn default() -> Self {
-        Self {
-            slot: Slot::default_signing(),
-            pin_policy: PinPolicy::Always,
-            touch_policy: TouchPolicy::Always,
-        }
-    }
-}
-
 pub(crate) trait KeyManager {
-    /// Import a private key into the device.
-    /// `vk` is the Cardano verifying key (`kL * G`) associated with `key`;
-    /// the adapter stores it so it can be retrieved later by `DeviceReader::read_public_key`.
+    // Import `key` and store `vk` next to it, so `DeviceReader::read_public_key` can return it.
     fn import_key(
         &mut self,
         key: SigningKey,

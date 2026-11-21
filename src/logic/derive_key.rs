@@ -1,49 +1,43 @@
-use crate::model::{CardanoKey, DerivationPath, SeedPhrase};
-use crate::YkadaResult;
-use ed25519_dalek::SigningKey;
+use crate::logic::derive_cardano_address;
+use crate::model::{CardanoKey, DerivationPath, Network, SeedPhrase};
+use ed25519_dalek::{SigningKey, VerifyingKey};
+use pallas_addresses::ShelleyAddress;
 
-pub(crate) fn derive_signing_key(
-    seed: &SeedPhrase,
-    path: &DerivationPath,
-) -> YkadaResult<SigningKey> {
-    let root = CardanoKey::from_seed_phrase(seed, "")?;
-    Ok(root.derive(path).private_key())
+// Device-free derivation of a ykada wallet: anyone holding the mnemonic can reproduce the
+// address with it. The verifying keys are the ones the YubiKey itself produces.
+pub(crate) struct WalletKeys {
+    pub payment_sk: SigningKey,
+    pub stake_sk: SigningKey,
+    pub payment_vk: VerifyingKey,
+    pub stake_vk: VerifyingKey,
+    pub address: ShelleyAddress,
+}
+
+pub(crate) fn derive_wallet_keys(seed: &SeedPhrase, network: Network) -> WalletKeys {
+    let root = CardanoKey::from_seed_phrase(seed);
+    let payment_sk = root.derive(&DerivationPath::PAYMENT).private_key();
+    let stake_sk = root.derive(&DerivationPath::STAKE).private_key();
+    let payment_vk = payment_sk.verifying_key();
+    let stake_vk = stake_sk.verifying_key();
+    let address = derive_cardano_address(&payment_vk, &stake_vk, network);
+    WalletKeys {
+        payment_sk,
+        stake_sk,
+        payment_vk,
+        stake_vk,
+        address,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_vectors::{KNOWN_ADDRESS_MAINNET, KNOWN_PHRASE};
 
     #[test]
-    fn test_derive_signing_key_payment_path() {
-        let phrase = "test walk nut penalty hip pave soap entry language right filter choice";
-        let seed = SeedPhrase::try_from(phrase).unwrap();
-        let path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
-
-        let sk = derive_signing_key(&seed, &path).unwrap();
-        assert_eq!(sk.as_bytes().len(), 32);
-        assert_eq!(sk.verifying_key().as_bytes().len(), 32);
-    }
-
-    #[test]
-    fn test_derive_signing_key_stake_path() {
-        let phrase = "test walk nut penalty hip pave soap entry language right filter choice";
-        let seed = SeedPhrase::try_from(phrase).unwrap();
-        let path = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
-
-        let sk = derive_signing_key(&seed, &path).unwrap();
-        assert_eq!(sk.as_bytes().len(), 32);
-        assert_eq!(sk.verifying_key().as_bytes().len(), 32);
-    }
-
-    #[test]
-    fn test_derive_signing_key_deterministic() {
-        let phrase = "test walk nut penalty hip pave soap entry language right filter choice";
-        let seed = SeedPhrase::try_from(phrase).unwrap();
-        let path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
-
-        let vk1 = derive_signing_key(&seed, &path).unwrap().verifying_key();
-        let vk2 = derive_signing_key(&seed, &path).unwrap().verifying_key();
-        assert_eq!(vk1.as_bytes(), vk2.as_bytes());
+    fn test_known_mainnet_address() {
+        let seed = SeedPhrase::try_from(KNOWN_PHRASE).unwrap();
+        let keys = derive_wallet_keys(&seed, Network::Mainnet);
+        assert_eq!(keys.address.to_bech32().unwrap(), KNOWN_ADDRESS_MAINNET);
     }
 }

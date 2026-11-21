@@ -1,73 +1,44 @@
 [package]
 name = "ykada"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
+description = "Turn a YubiKey into a Cardano hardware wallet"
+license = "Apache-2.0"
 repository = "https://github.com/akonior/ykada"
 
-[features]
-default = ["cli"]
-cli = [
-  "dep:clap",
-  "dep:clap-verbosity-flag",
-  "dep:tracing-subscriber",
-  "dep:pinentry",
-  "dep:secrecy",
-]
-hardware-tests = []
-
-[[bin]]
-name = "ykada"
-required-features = ["cli"]
-
 [dependencies]
-# Core library dependencies (always included)
-anyhow = "1.0.100"
-ed25519-dalek = { version = "2.2.0", features = ["pkcs8"] }
+ed25519-dalek = "2.2.0"
 hex = "0.4.3"
 thiserror = "2.0"
-tracing = "0.1"
-yubikey = { git = "https://github.com/akonior/yubikey.rs", branch = "main", features = [
+# Ed25519 import/sign (firmware 5.7+) is merged upstream but not in a stable release yet;
+# pinned to that exact commit.
+yubikey = { git = "https://github.com/akonior/yubikey.rs", rev = "872ba35f5453b0bec611b468102c61c123768965", features = [
   "untested",
 ] }
 
-# BIP39/BIP32 dependencies
-bip39 = "2.0"
-bip32 = "0.5"
+# Key derivation
+bip39 = { version = "2.0", features = ["zeroize"] }
 pbkdf2 = "0.12"
-hmac = "0.12"
 sha2 = "0.10"
 ed25519-bip32 = "0.4"
-
-# Encoding
-bech32 = "0.9"
-blake2 = "0.10"
-
-# CLI dependencies (optional, only with "cli" feature)
-clap = { version = "4.5.53", features = ["derive"], optional = true }
-clap-verbosity-flag = { version = "3.0.4", default-features = false, features = [
-  "tracing",
-], optional = true }
-tracing-subscriber = { version = "0.3", optional = true }
-pinentry = { version = "0.5", optional = true }
-secrecy = { version = "0.8", optional = true }
-
 rand_core = "0.9"
+
+# Network
 ureq = { version = "2", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
-# Cardano transaction building
+# Cardano addresses and transactions
 pallas-txbuilder = "0.35"
 pallas-addresses = "0.35"
 pallas-crypto = "0.35"
 pallas-primitives = "0.35"
-serde_json = "1"
 
-# Development/testing only
-env_logger = "0.11.8"
-
-[dev-dependencies]
-assert_cmd = "=2.0.17"
-predicates = "3.1.4"
+# CLI
+anyhow = "1.0.100"
+clap = { version = "4.5.53", features = ["derive"] }
+pinentry = "0.5"
+secrecy = "0.8"
 
 # The profile that 'dist' will build with
 [profile.dist]

@@ -4,12 +4,6 @@ pub type YkadaResult<T> = Result<T, YkadaError>;
 
 #[derive(Error, Debug)]
 pub enum YkadaError {
-    #[error("PIN validation error: {0}")]
-    Pin(#[from] crate::model::PinError),
-
-    #[error("Slot error: {0}")]
-    Slot(#[from] crate::model::SlotError),
-
     #[error("Policy error: {0}")]
     Policy(#[from] crate::model::PolicyError),
 
@@ -18,12 +12,6 @@ pub enum YkadaError {
 
     #[error("Seed phrase error: {0}")]
     SeedPhrase(#[from] crate::model::SeedPhraseError),
-
-    #[error("Derivation path error: {0}")]
-    DerivationPath(#[from] crate::model::DerivationPathError),
-
-    #[error("Cardano key error: {0}")]
-    CardanoKey(#[from] crate::model::CardanoKeyError),
 
     #[error("YubiKey library error: {0}")]
     YubikeyLib(#[from] yubikey::Error),
@@ -49,23 +37,32 @@ pub enum YkadaError {
     #[error("Ed25519 signature error: {0}")]
     Ed25519SignatureError(#[from] ed25519_dalek::SignatureError),
 
-    #[error("Ed25519 PKCS8 error: {0}")]
-    Ed25519Pkcs8Error(#[from] ed25519_dalek::pkcs8::Error),
-
     #[error("Invalid key format: {format}")]
     InvalidKeyFormat { format: String },
 
+    #[error("Transaction error: {0}")]
+    Tx(String),
+
+    #[error("insufficient funds: have {have} lovelace, need {need}")]
+    InsufficientFunds { have: u64, need: u64 },
+
+    #[error("Wallet error: {0}")]
+    WalletState(String),
+
+    #[error("Signature verification failed: device signature does not match the transaction")]
+    SignatureVerificationFailed,
+
     #[error("Network error: {0}")]
-    NetworkError(String),
+    Network(String),
 
     #[error("Network error: {0}")]
     UreqError(Box<ureq::Error>),
 
-    #[error("Network error: {0}")]
+    #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 
-    #[error("Bech32 error: {0}")]
-    Bech32(#[from] crate::logic::Bech32Error),
+    #[error("Address error: {0}")]
+    Address(#[from] pallas_addresses::Error),
 }
 
 impl From<ureq::Error> for YkadaError {

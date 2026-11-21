@@ -1,415 +1,166 @@
+use std::io::{IsTerminal, Read, Write};
+
 use anyhow::Context;
-use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
-use clap_verbosity_flag::{Verbosity, WarnLevel};
+use clap::{Args, Parser, Subcommand};
 use secrecy::ExposeSecret;
 
-use ykada::api::{
-    Bech32Encodable, Network, Pin, PinPolicy, SeedPhrase, SendMode, SendOutcome, Slot, TouchPolicy,
-    WalletConfig,
+use ykada::{
+    GeneratedWallet, ManagementKey, Network, Overwrite, Pin, PinPolicy, SeedPhrase, SendAdaParams,
+    SendMode, SendOutcome, TouchPolicy, TxSummary, WalletConfig,
 };
 
-#[derive(Parser, Debug)]
-#[command(name = "ykada")]
-#[command(about = "YubiKey Cardano wallet", version)]
+#[derive(Parser)]
+#[command(name = "ykada", about = "YubiKey Cardano wallet", version)]
 #[command(arg_required_else_help = true)]
-pub struct Cli {
-    #[command(flatten)]
-    pub verbosity: Verbosity<WarnLevel>,
-
+struct Cli {
     #[command(subcommand)]
-    pub command: Commands,
+    command: Commands,
 }
 
-#[derive(Subcommand, Debug)]
-pub enum Commands {
-    #[command(about = "Import a wallet from a BIP39 seed phrase into the YubiKey")]
-    Import {
-        #[arg(long)]
-        seed: String,
-        #[arg(long, default_value = "signature")]
-        payment_slot: SlotArg,
-        #[arg(long, default_value = "key-management")]
-        stake_slot: SlotArg,
-        #[arg(long, default_value = "always")]
-        pin_policy: PinPolicyArg,
-        #[arg(long, default_value = "always")]
-        touch_policy: TouchPolicyArg,
-        #[arg(long)]
-        mgmt_key: Option<String>,
-        #[arg(long, default_value = "preview")]
-        network: NetworkArg,
-    },
-
-    #[command(about = "Generate a new wallet: seed, two keys on YubiKey, Cardano address")]
+#[derive(Subcommand)]
+enum Commands {
+    /// Generate a new wallet: fresh 24-word mnemonic, keys stored on the YubiKey
     Generate {
-        #[arg(long)]
-        seed: Option<String>,
-        #[arg(long, default_value = "signature")]
-        payment_slot: SlotArg,
-        #[arg(long, default_value = "key-management")]
-        stake_slot: SlotArg,
-        #[arg(long, default_value = "always")]
-        pin_policy: PinPolicyArg,
-        #[arg(long, default_value = "always")]
-        touch_policy: TouchPolicyArg,
-        #[arg(long)]
-        mgmt_key: Option<String>,
-        #[arg(long, default_value = "preview")]
-        network: NetworkArg,
+        #[command(flatten)]
+        provision: ProvisionArgs,
     },
 
-    #[command(about = "Show connected YubiKey info and wallet address")]
+    /// Restore a wallet from a BIP39 mnemonic into the YubiKey
+    Import {
+        /// Read the mnemonic from a file [default: hidden prompt]
+        #[arg(long)]
+        seed_file: Option<String>,
+        #[command(flatten)]
+        provision: ProvisionArgs,
+    },
+
+    /// Show the wallet address stored on the YubiKey (read-only, no PIN)
     Info {
-        #[arg(long, default_value = "signature")]
-        payment_slot: SlotArg,
-        #[arg(long, default_value = "key-management")]
-        stake_slot: SlotArg,
-        #[arg(long, default_value = "preview")]
-        network: NetworkArg,
+        #[arg(long, value_enum, default_value_t = Network::Preview)]
+        network: Network,
     },
 
-    #[command(
-        about = "Show on-chain ADA and token balance for the wallet address on the connected YubiKey"
-    )]
+    /// Show the on-chain ADA balance of the wallet
     Balance {
-        #[arg(long, default_value = "signature")]
-        payment_slot: SlotArg,
-        #[arg(long, default_value = "key-management")]
-        stake_slot: SlotArg,
-        #[arg(long, default_value = "preview")]
-        network: NetworkArg,
+        #[arg(long, value_enum, default_value_t = Network::Preview)]
+        network: Network,
     },
 
-    #[command(about = "Sign a pre-built transaction from a file (e.g. Eternl export)")]
-    SignTx {
-        /// Path to the unsigned transaction JSON file (must contain a "cborHex" field)
-        #[arg(long)]
-        tx_file: String,
-        /// Sign and submit to the network (outputs tx hash instead of signed CBOR)
-        #[arg(long)]
-        send: bool,
-        #[arg(long, default_value = "signature")]
-        payment_slot: SlotArg,
-        #[arg(long, default_value = "key-management")]
-        stake_slot: SlotArg,
-        #[arg(long, default_value = "preview")]
-        network: NetworkArg,
-        /// YubiKey PIN (required if the key slot uses PIN-on-sign policy)
-        #[arg(long)]
-        pin: Option<String>,
-    },
-
-    #[command(
-        about = "Send ADA to a Cardano address",
-        long_about = "Send ADA to a Cardano address.\n\n\
-            By default signs via YubiKey and submits to the network.\n\
-            Use --dry-run to build the unsigned transaction (CBOR hex) without signing.\n\
-            Use --only-sign to sign but not submit (outputs signed CBOR hex)."
-    )]
+    /// Build, sign on the YubiKey, and submit an ADA payment
     Send {
-        /// Recipient bech32 address
+        /// Recipient address (addr1… / addr_test1…)
         #[arg(long)]
         to: String,
-        /// Amount to send in whole ADA (e.g. 2 = 2 000 000 lovelace)
-        #[arg(long, conflicts_with = "lovelace")]
+        /// Amount in whole ADA
+        #[arg(
+            long,
+            conflicts_with = "lovelace",
+            required_unless_present = "lovelace"
+        )]
         ada: Option<u64>,
-        /// Amount to send in lovelace (exact; use instead of --ada for sub-ADA precision)
-        #[arg(long, conflicts_with = "ada")]
+        /// Amount in lovelace
+        #[arg(long)]
         lovelace: Option<u64>,
-        /// Transaction fee in lovelace
-        #[arg(long, default_value = "200000")]
+        /// Fee in lovelace
+        #[arg(long, default_value_t = 200_000)]
         fee: u64,
-        #[arg(long, default_value = "signature")]
-        payment_slot: SlotArg,
-        #[arg(long, default_value = "key-management")]
-        stake_slot: SlotArg,
-        #[arg(long, default_value = "preview")]
-        network: NetworkArg,
-        /// Build the unsigned transaction only; do not sign or submit
+        /// Build the unsigned transaction only (prints CBOR hex)
         #[arg(long, conflicts_with = "only_sign")]
         dry_run: bool,
-        /// Sign but do not submit; outputs signed CBOR hex
-        #[arg(long, conflicts_with = "dry_run")]
-        only_sign: bool,
-        /// YubiKey PIN
+        /// Sign but do not submit (prints signed CBOR hex)
         #[arg(long)]
-        pin: Option<String>,
+        only_sign: bool,
+        #[arg(long, value_enum, default_value_t = Network::Preview)]
+        network: Network,
+    },
+
+    /// Sign a transaction built elsewhere (Eternl/cardano-cli JSON or CBOR hex)
+    SignTx {
+        /// Transaction file; omit to read stdin
+        #[arg(long)]
+        tx_file: Option<String>,
+        /// Also submit to the network (prints the transaction ID)
+        #[arg(long)]
+        send: bool,
+        #[arg(long, value_enum, default_value_t = Network::Preview)]
+        network: Network,
+    },
+
+    /// Decode a transaction and verify its witness signatures locally
+    DecodeTx {
+        /// Transaction file; omit to read stdin
+        #[arg(long)]
+        tx_file: Option<String>,
     },
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum SlotArg {
-    Authentication,
-    Signature,
-    KeyManagement,
-    CardAuthentication,
-}
-
-impl From<SlotArg> for Slot {
-    fn from(arg: SlotArg) -> Self {
-        match arg {
-            SlotArg::Authentication => Slot::Authentication,
-            SlotArg::Signature => Slot::Signature,
-            SlotArg::KeyManagement => Slot::KeyManagement,
-            SlotArg::CardAuthentication => Slot::CardAuthentication,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum PinPolicyArg {
-    Never,
-    Once,
-    Always,
-}
-
-impl From<PinPolicyArg> for PinPolicy {
-    fn from(arg: PinPolicyArg) -> Self {
-        match arg {
-            PinPolicyArg::Never => PinPolicy::Never,
-            PinPolicyArg::Once => PinPolicy::Once,
-            PinPolicyArg::Always => PinPolicy::Always,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum TouchPolicyArg {
-    Never,
-    Always,
-    Cached,
-}
-
-impl From<TouchPolicyArg> for TouchPolicy {
-    fn from(arg: TouchPolicyArg) -> Self {
-        match arg {
-            TouchPolicyArg::Never => TouchPolicy::Never,
-            TouchPolicyArg::Always => TouchPolicy::Always,
-            TouchPolicyArg::Cached => TouchPolicy::Cached,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum NetworkArg {
-    Mainnet,
-    Preprod,
-    Preview,
-}
-
-impl From<NetworkArg> for Network {
-    fn from(arg: NetworkArg) -> Self {
-        match arg {
-            NetworkArg::Mainnet => Network::Mainnet,
-            NetworkArg::Preprod => Network::Preprod,
-            NetworkArg::Preview => Network::Preview,
-        }
-    }
-}
-
-fn resolve_pin_and_notify(
-    slot: Slot,
-    cli_pin: Option<String>,
-    is_terminal: bool,
-) -> anyhow::Result<(Option<Pin>, TouchPolicy)> {
-    let (pin_policy, touch_policy) =
-        ykada::api::read_slot_policy(slot).context("failed to read slot policy")?;
-
-    let pin = match pin_policy {
-        PinPolicy::Never => None,
-        PinPolicy::Once | PinPolicy::Always => match cli_pin {
-            Some(s) => Some(s.parse::<Pin>()?),
-            None => {
-                if is_terminal {
-                    eprint!("Waiting for PIN...");
-                }
-                let passphrase = pinentry::PassphraseInput::with_default_binary()
-                    .ok_or_else(|| {
-                        anyhow::anyhow!(
-                            "pinentry not found; install pinentry or use --pin to provide PIN directly"
-                        )
-                    })?
-                    .with_description("Enter your YubiKey PIN")
-                    .with_prompt("PIN:")
-                    .interact()
-                    .map_err(|e| anyhow::anyhow!("pinentry error: {e}"))?;
-                if is_terminal {
-                    eprint!("\r\x1b[K");
-                }
-                Some(passphrase.expose_secret().parse::<Pin>()?)
-            }
-        },
-    };
-
-    Ok((pin, touch_policy))
-}
-
-fn print_error(e: &anyhow::Error) {
-    use std::io::IsTerminal;
-    if std::io::stderr().is_terminal() {
-        eprintln!("\x1b[1;31merror\x1b[0m: {:#}", e);
-    } else {
-        eprintln!("error: {:#}", e);
-    }
+#[derive(Args)]
+struct ProvisionArgs {
+    #[arg(long, value_enum, default_value_t = PinPolicy::Always)]
+    pin_policy: PinPolicy,
+    #[arg(long, value_enum, default_value_t = TouchPolicy::Always)]
+    touch_policy: TouchPolicy,
+    /// Read the PIV management key (hex) from a file [default: the factory key]
+    #[arg(long)]
+    mgmt_key_file: Option<String>,
+    /// Replace a wallet already stored on the YubiKey
+    #[arg(long)]
+    force: bool,
+    #[arg(long, value_enum, default_value_t = Network::Preview)]
+    network: Network,
 }
 
 fn main() {
-    let matches = Cli::command()
-        .before_help(ykada::api::banner())
-        .before_long_help(ykada::api::banner())
-        .get_matches();
-    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
-
-    tracing_subscriber::fmt()
-        .with_max_level(cli.verbosity)
-        .without_time()
-        .with_target(true)
-        .with_level(true)
-        .init();
-
-    if let Err(e) = run(cli.command) {
-        print_error(&e);
+    if let Err(e) = run(Cli::parse().command) {
+        match std::io::stderr().is_terminal() {
+            true => eprintln!("\x1b[1;31merror\x1b[0m: {e:#}"),
+            false => eprintln!("error: {e:#}"),
+        }
         std::process::exit(1);
     }
 }
 
+const LOVELACE_PER_ADA: u64 = 1_000_000;
+
+// ykada's PIV key model gives different addresses than other wallets for the same mnemonic.
+const MNEMONIC_SCOPE_NOTE: &str = "Note: this mnemonic restores the wallet only with ykada. \
+Other Cardano wallets derive a different address from it (see README, \"Keys and addresses\").";
+
 fn run(command: Commands) -> anyhow::Result<()> {
     match command {
-        Commands::Import {
-            seed,
-            payment_slot,
-            stake_slot,
-            pin_policy,
-            touch_policy,
-            mgmt_key,
-            network,
-        } => {
-            let config = WalletConfig {
-                payment_slot: payment_slot.into(),
-                stake_slot: stake_slot.into(),
-                pin_policy: pin_policy.into(),
-                touch_policy: touch_policy.into(),
-                network: network.into(),
-            };
-            let mgmt_key_opt = mgmt_key.map(|s| s.try_into()).transpose()?;
-            let seed_phrase = SeedPhrase::try_from(seed.as_str()).context("invalid seed phrase")?;
-            let wallet = ykada::api::generate_or_import_wallet(
-                Some(seed_phrase),
-                config,
-                mgmt_key_opt.as_ref(),
-            )
-            .context("failed to import wallet from seed phrase")?;
-            println!("Cardano address:         {}", wallet.address.to_bech32()?);
-        }
-
-        Commands::Generate {
-            seed,
-            payment_slot,
-            stake_slot,
-            pin_policy,
-            touch_policy,
-            mgmt_key,
-            network,
-        } => {
-            let config = WalletConfig {
-                payment_slot: payment_slot.into(),
-                stake_slot: stake_slot.into(),
-                pin_policy: pin_policy.into(),
-                touch_policy: touch_policy.into(),
-                network: network.into(),
-            };
-            let mgmt_key_opt = mgmt_key.map(|s| s.try_into()).transpose()?;
-            let seed_phrase = seed
-                .map(|p| SeedPhrase::try_from(p.as_str()).context("invalid seed phrase"))
-                .transpose()?;
-            let wallet =
-                ykada::api::generate_or_import_wallet(seed_phrase, config, mgmt_key_opt.as_ref())?;
+        Commands::Generate { provision } => {
+            let wallet = provision_wallet(None, provision)?;
             println!("Mnemonic (store safely): {}", wallet.mnemonic.phrase());
             println!("Cardano address:         {}", wallet.address.to_bech32()?);
+            eprintln!("{MNEMONIC_SCOPE_NOTE}");
         }
 
-        Commands::Info {
-            payment_slot,
-            stake_slot,
-            network,
+        Commands::Import {
+            seed_file,
+            provision,
         } => {
-            let info =
-                ykada::api::wallet_info(payment_slot.into(), stake_slot.into(), network.into())?;
-
-            match info.address {
-                Some(addr) => println!("Cardano address:         {}", addr.to_bech32()?),
-                None => println!("Cardano address:         (no wallet — run `ykada generate` or `ykada import` first)"),
-            }
+            let wallet = provision_wallet(Some(resolve_seed(seed_file)?), provision)?;
+            println!("Cardano address:         {}", wallet.address.to_bech32()?);
+            eprintln!("{MNEMONIC_SCOPE_NOTE}");
         }
 
-        Commands::Balance {
-            payment_slot,
-            stake_slot,
-            network,
-        } => {
-            let info =
-                ykada::api::wallet_info(payment_slot.into(), stake_slot.into(), network.into())?;
+        Commands::Info { network } => match ykada::wallet_info(network)?.address {
+            Some(addr) => println!("Cardano address:         {}", addr.to_bech32()?),
+            None => println!("No wallet on this YubiKey — run `ykada generate` or `ykada import`"),
+        },
 
-            let addr = info.address.ok_or_else(|| {
-                anyhow::anyhow!(
-                    "No Cardano address found on this YubiKey — import or generate a wallet first"
-                )
-            })?;
-
-            let balance = ykada::api::fetch_balance(&addr, network.into())
-                .context("failed to fetch balance")?;
-
-            println!("Cardano address:  {}", addr.to_bech32()?);
-            println!("Account balance:");
-            println!("  ADA:            {:.6}", balance.ada());
-            for token in &balance.tokens {
-                println!(
-                    "  {}/{}  ×  {}",
-                    token.policy_id, token.asset_name, token.quantity
-                );
-            }
-        }
-
-        Commands::SignTx {
-            tx_file,
-            send,
-            payment_slot,
-            stake_slot,
-            network,
-            pin,
-        } => {
-            use std::io::IsTerminal;
-            let is_terminal = std::io::stderr().is_terminal();
-            let content = std::fs::read_to_string(&tx_file)
-                .with_context(|| format!("failed to read transaction file: {tx_file}"))?;
-            let mode = if send {
-                SendMode::SignAndSubmit
-            } else {
-                SendMode::SignOnly
-            };
-            let payment_slot: Slot = payment_slot.into();
-            let (resolved_pin, touch_policy) =
-                resolve_pin_and_notify(payment_slot, pin, is_terminal)?;
-            let needs_touch = touch_policy != TouchPolicy::Never;
-            if needs_touch && is_terminal {
-                eprint!("Please touch your YubiKey...");
-            }
-            let result = ykada::api::sign_tx_file(
-                &content,
-                payment_slot,
-                stake_slot.into(),
-                network.into(),
-                mode,
-                resolved_pin,
-            )
-            .context("failed to sign transaction")?;
-            if needs_touch && is_terminal {
-                eprint!("\r\x1b[K");
-            }
-            match result {
-                SendOutcome::Cbor(cbor) => println!("{}", hex::encode(&cbor)),
-                SendOutcome::TxHash(hash) => println!("Transaction ID: {hash}"),
-            }
+        Commands::Balance { network } => {
+            let addr = ykada::wallet_info(network)?
+                .address
+                .context("no wallet on this YubiKey — run `ykada generate` or `ykada import`")?;
+            let balance =
+                ykada::fetch_balance(&addr, network).context("failed to fetch balance")?;
+            println!("Cardano address:         {}", addr.to_bech32()?);
+            println!(
+                "Balance:                 {}.{:06} ADA",
+                balance / LOVELACE_PER_ADA,
+                balance % LOVELACE_PER_ADA
+            );
         }
 
         Commands::Send {
@@ -417,53 +168,77 @@ fn run(command: Commands) -> anyhow::Result<()> {
             ada,
             lovelace,
             fee,
-            payment_slot,
-            stake_slot,
-            network,
             dry_run,
             only_sign,
-            pin,
+            network,
         } => {
-            use std::io::IsTerminal;
-            let is_terminal = std::io::stderr().is_terminal();
-            let send_lovelace = match (ada, lovelace) {
-                (Some(a), None) => a * 1_000_000,
-                (None, Some(l)) => l,
-                _ => anyhow::bail!("provide either --ada or --lovelace"),
+            let send_lovelace = match ada {
+                Some(ada) => ada
+                    .checked_mul(LOVELACE_PER_ADA)
+                    .context("--ada value overflows lovelace")?,
+                None => lovelace.context("provide --ada or --lovelace")?,
             };
             let mode = match (dry_run, only_sign) {
                 (true, _) => SendMode::DryRun,
-                (_, true) => SendMode::SignOnly,
-                _ => SendMode::SignAndSubmit,
+                (false, true) => SendMode::SignOnly,
+                (false, false) => SendMode::SignAndSubmit,
             };
-            let payment_slot: Slot = payment_slot.into();
-            let (resolved_pin, touch_policy) = if matches!(mode, SendMode::DryRun) {
-                (None, TouchPolicy::Never)
-            } else {
-                resolve_pin_and_notify(payment_slot, pin, is_terminal)?
-            };
-            let needs_touch =
-                !matches!(mode, SendMode::DryRun) && touch_policy != TouchPolicy::Never;
-            if needs_touch && is_terminal {
-                eprint!("Please touch your YubiKey...");
+            if mode == SendMode::SignAndSubmit && network == Network::Mainnet {
+                confirm_mainnet(&format!(
+                    "Send {send_lovelace} lovelace to {to} (fee {fee}) on MAINNET?"
+                ))?;
             }
-            let result = ykada::api::send_ada(
-                payment_slot,
-                stake_slot.into(),
-                network.into(),
-                &to,
+            let pin = match mode {
+                SendMode::DryRun => None,
+                SendMode::SignOnly | SendMode::SignAndSubmit => prepare_signing()?,
+            };
+            let outcome = ykada::send_ada(SendAdaParams {
+                network,
+                recipient: to,
                 send_lovelace,
-                fee,
+                fee_lovelace: fee,
                 mode,
-                resolved_pin,
-            )
+                pin,
+            })
             .context("failed to send ADA")?;
-            if needs_touch && is_terminal {
-                eprint!("\r\x1b[K");
+            clear_status_line();
+            print_outcome(outcome);
+        }
+
+        Commands::SignTx {
+            tx_file,
+            send,
+            network,
+        } => {
+            let content = read_input(tx_file)?;
+            // Never sign blind: show what is about to be signed.
+            let summary = ykada::decode_tx(&content).context("failed to decode transaction")?;
+            eprintln!("Signing transaction:");
+            print_summary(&mut std::io::stderr(), &summary)?;
+            let mode = match send {
+                true => SendMode::SignAndSubmit,
+                false => SendMode::SignOnly,
+            };
+            if send && network == Network::Mainnet {
+                confirm_mainnet("Submit this transaction to MAINNET?")?;
             }
-            match result {
-                SendOutcome::Cbor(cbor) => println!("{}", hex::encode(&cbor)),
-                SendOutcome::TxHash(hash) => println!("Transaction ID: {hash}"),
+            let pin = prepare_signing()?;
+            let outcome = ykada::sign_tx(&content, network, mode, pin)
+                .context("failed to sign transaction")?;
+            clear_status_line();
+            print_outcome(outcome);
+        }
+
+        Commands::DecodeTx { tx_file } => {
+            let summary =
+                ykada::decode_tx(&read_input(tx_file)?).context("failed to decode transaction")?;
+            print_summary(&mut std::io::stdout(), &summary)?;
+            if summary.witnesses_verified < summary.witness_count {
+                anyhow::bail!(
+                    "{} of {} witness signature(s) failed verification",
+                    summary.witness_count - summary.witnesses_verified,
+                    summary.witness_count
+                );
             }
         }
     }
@@ -471,117 +246,148 @@ fn run(command: Commands) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(all(test, feature = "hardware-tests"))]
-mod tests {
-    use assert_cmd::Command;
-
-    const KNOWN_SEED: &str = "slim fine attend tape wave input head crew shift desk find mutual square cake uncle morning provide naive around brief couple faint alcohol young";
-    const KNOWN_ADDR: &str = "addr_test1qzsmxwwte2fw6cla5d4c725f3wkmth9k4ds923lgjq6vey0uxtmw20nuadt9qv2ak6adgskdtp3j6jx7xp39gs9wa5hs0z854g";
-    const FALLBACK_RECV: &str = "addr_test1qz6vzpsz3knmun4wxe5snhtvqslmujdgua7ralptg339extxmjk336y5qn6w87clfhdmu6nc0hfl4q2q9r0ft20ytdes6f5prn";
-    const MGMT_KEY: &str = "010203040506070801020304050607080102030405060709";
-
-    #[test]
-    fn test_cli_version_parameter() {
-        let mut cmd = Command::cargo_bin("ykada").unwrap();
-        let assert = cmd.arg("--version").assert();
-        assert.success();
+fn provision_wallet(
+    seed: Option<SeedPhrase>,
+    args: ProvisionArgs,
+) -> anyhow::Result<GeneratedWallet> {
+    let mgmt_key = resolve_mgmt_key(args.mgmt_key_file)?;
+    if mgmt_key.is_none() {
+        eprintln!("Note: no --mgmt-key-file given, trying the default PIV management key. If it works, anyone holding this YubiKey can replace its keys — change it with `ykman piv access change-management-key`.");
     }
-
-    #[test]
-    fn test_info() {
-        Command::cargo_bin("ykada")
-            .unwrap()
-            .args(["info", "--network", "preview"])
-            .assert()
-            .success()
-            .stdout(predicates::str::contains("Cardano address:"))
-            .stdout(predicates::str::contains(KNOWN_ADDR));
+    if matches!(args.touch_policy, TouchPolicy::Never) {
+        eprintln!("Warning: touch policy 'never' — keys will sign without a physical touch.");
     }
+    let config = WalletConfig {
+        pin_policy: args.pin_policy,
+        touch_policy: args.touch_policy,
+        network: args.network,
+        overwrite: match args.force {
+            true => Overwrite::Allow,
+            false => Overwrite::Refuse,
+        },
+    };
+    ykada::generate_or_import_wallet(seed, config, mgmt_key.as_ref())
+        .context("failed to store wallet on YubiKey")
+}
 
-    #[test]
-    fn test_import_predefined_seed() {
-        Command::cargo_bin("ykada")
-            .unwrap()
-            .args([
-                "import",
-                "--seed",
-                KNOWN_SEED,
-                "--network",
-                "preview",
-                "--pin-policy",
-                "never",
-                "--touch-policy",
-                "never",
-                "--mgmt-key",
-                MGMT_KEY,
-            ])
-            .assert()
-            .success()
-            .stdout(predicates::str::contains(KNOWN_ADDR));
+// Ask for the PIN if the payment slot needs one and tell the user what the key expects.
+fn prepare_signing() -> anyhow::Result<Option<Pin>> {
+    let (pin_policy, touch_policy) =
+        ykada::payment_slot_policy().context("failed to read slot policy")?;
+    let pin = match pin_policy {
+        PinPolicy::Never => None,
+        PinPolicy::Once | PinPolicy::Always => {
+            Some(prompt_secret("Enter your YubiKey PIN", "PIN:")?.parse::<Pin>()?)
+        }
+    };
+    if matches!(&pin, Some(p) if p.as_bytes() == Pin::DEFAULT) {
+        eprintln!("Warning: using the default PIN (123456). Change it with `ykman piv access change-pin`.");
+    }
+    if touch_policy != TouchPolicy::Never && std::io::stderr().is_terminal() {
+        eprint!("Please touch your YubiKey...");
+    }
+    Ok(pin)
+}
 
-        let output = Command::cargo_bin("ykada")
-            .unwrap()
-            .args(["balance", "--network", "preview"])
-            .assert()
-            .success()
-            .get_output()
-            .stdout
-            .clone();
+fn clear_status_line() {
+    if std::io::stderr().is_terminal() {
+        eprint!("\r\x1b[K");
+    }
+}
 
-        let stdout = String::from_utf8_lossy(&output);
-        assert!(
-            stdout.contains("ADA:"),
-            "Expected 'ADA:' in output, got: {stdout}"
+fn prompt_secret(description: &str, prompt: &str) -> anyhow::Result<String> {
+    let entered = pinentry::PassphraseInput::with_default_binary()
+        .context("pinentry not found; install pinentry")?
+        .with_description(description)
+        .with_prompt(prompt)
+        .interact()
+        .map_err(|e| anyhow::anyhow!("pinentry error: {e}"))?;
+    Ok(entered.expose_secret().to_string())
+}
+
+// Mnemonic from a file or a hidden prompt (keeps it out of argv and shell history).
+fn resolve_seed(seed_file: Option<String>) -> anyhow::Result<SeedPhrase> {
+    let phrase = match seed_file {
+        Some(path) => std::fs::read_to_string(&path)
+            .with_context(|| format!("failed to read seed file: {path}"))?,
+        None => prompt_secret("Enter your BIP39 seed phrase", "Seed phrase:")?,
+    };
+    SeedPhrase::try_from(phrase.trim()).context("invalid seed phrase")
+}
+
+fn resolve_mgmt_key(mgmt_key_file: Option<String>) -> anyhow::Result<Option<ManagementKey>> {
+    mgmt_key_file
+        .map(|path| {
+            let hexed = std::fs::read_to_string(&path)
+                .with_context(|| format!("failed to read management key file: {path}"))?;
+            ManagementKey::try_from(hexed).context("invalid management key")
+        })
+        .transpose()
+}
+
+fn confirm_mainnet(question: &str) -> anyhow::Result<()> {
+    if !std::io::stdin().is_terminal() {
+        anyhow::bail!(
+            "mainnet submission must be confirmed in a terminal (with sign-tx, use --tx-file instead of stdin)"
         );
-
-        let ada_value: f64 = stdout
-            .lines()
-            .find(|l| l.contains("ADA:"))
-            .and_then(|l| l.split("ADA:").nth(1))
-            .and_then(|s| s.trim().parse().ok())
-            .expect("Could not parse ADA balance as f64");
-
-        assert!(ada_value > 0.0, "Expected ADA balance > 0, got {ada_value}");
     }
-
-    #[test]
-    fn test_generate() {
-        Command::cargo_bin("ykada")
-            .unwrap()
-            .args([
-                "generate",
-                "--network",
-                "preview",
-                "--pin-policy",
-                "never",
-                "--touch-policy",
-                "never",
-                "--mgmt-key",
-                MGMT_KEY,
-            ])
-            .assert()
-            .success()
-            .stdout(predicates::str::contains("Mnemonic (store safely):"))
-            .stdout(predicates::str::contains(
-                "Cardano address:         addr_test1",
-            ));
+    eprint!("{question} Type 'yes' to continue: ");
+    std::io::stderr().flush()?;
+    let mut answer = String::new();
+    std::io::stdin().read_line(&mut answer)?;
+    match answer.trim().eq_ignore_ascii_case("yes") {
+        true => Ok(()),
+        false => anyhow::bail!("aborted: mainnet submission not confirmed"),
     }
+}
 
-    #[test]
-    fn test_send() {
-        Command::cargo_bin("ykada")
-            .unwrap()
-            .args([
-                "send",
-                "--to",
-                FALLBACK_RECV,
-                "--lovelace",
-                "1500000",
-                "--network",
-                "preview",
-            ])
-            .assert()
-            .success()
-            .stdout(predicates::str::contains("Transaction ID:"));
+fn read_input(tx_file: Option<String>) -> anyhow::Result<String> {
+    match tx_file {
+        Some(path) => std::fs::read_to_string(&path)
+            .with_context(|| format!("failed to read transaction file: {path}")),
+        None => {
+            let mut buf = String::new();
+            std::io::stdin()
+                .read_to_string(&mut buf)
+                .context("failed to read transaction from stdin")?;
+            Ok(buf)
+        }
     }
+}
+
+fn print_outcome(outcome: SendOutcome) {
+    match outcome {
+        SendOutcome::TxHash(hash) => println!("Transaction ID: {hash}"),
+        SendOutcome::Cbor(cbor) => println!("{}", hex::encode(cbor)),
+    }
+}
+
+fn print_summary(out: &mut dyn Write, summary: &TxSummary) -> std::io::Result<()> {
+    writeln!(out, "Transaction body hash: {}", summary.body_hash_hex)?;
+    writeln!(out, "Inputs ({}):", summary.inputs.len())?;
+    summary
+        .inputs
+        .iter()
+        .try_for_each(|input| writeln!(out, "  {input}"))?;
+    writeln!(out, "Outputs ({}):", summary.outputs.len())?;
+    summary.outputs.iter().try_for_each(|o| {
+        let tokens = match o.has_tokens {
+            true => " + tokens",
+            false => "",
+        };
+        writeln!(out, "  {} lovelace{tokens} -> {}", o.lovelace, o.address)
+    })?;
+    writeln!(out, "Fee:                   {} lovelace", summary.fee)?;
+    if !summary.extras.is_empty() {
+        writeln!(out, "Also contains:         {}", summary.extras.join(", "))?;
+    }
+    match summary.ttl {
+        Some(ttl) => writeln!(out, "TTL (invalid_from):    slot {ttl}")?,
+        None => writeln!(out, "TTL (invalid_from):    none")?,
+    }
+    writeln!(
+        out,
+        "Witnesses verified:    {}/{}",
+        summary.witnesses_verified, summary.witness_count
+    )
 }

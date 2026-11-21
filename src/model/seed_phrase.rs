@@ -1,8 +1,17 @@
+use std::fmt;
+
 use bip39::{Language, Mnemonic};
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct SeedPhrase(Mnemonic);
+
+// Never print the mnemonic via Debug (e.g. in a panic backtrace or struct dump).
+impl fmt::Debug for SeedPhrase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SeedPhrase([REDACTED])")
+    }
+}
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum SeedPhraseError {
@@ -26,7 +35,7 @@ impl SeedPhrase {
         self.0.to_entropy()
     }
 
-    // Not pure — uses OS entropy. Call only from the shell layer (api.rs).
+    // Not pure: uses OS entropy.
     pub fn generate() -> Result<Self, SeedPhraseError> {
         use rand_core::{OsRng, TryRngCore};
         let mut entropy = [0u8; 32];
@@ -45,19 +54,11 @@ impl SeedPhrase {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_vectors::{KNOWN_PHRASE, TEST_PHRASE};
 
     #[test]
     fn test_12_word_mnemonic() {
-        let phrase = "test walk nut penalty hip pave soap entry language right filter choice";
-        let seed = SeedPhrase::try_from(phrase);
-        assert!(seed.is_ok());
-    }
-
-    #[test]
-    fn test_24_word_mnemonic() {
-        let phrase = "excess behave track soul table wear ocean cash stay nature item turtle palm soccer lunch horror start stumble month panic right must lock dress";
-        let seed = SeedPhrase::try_from(phrase);
-        assert!(seed.is_ok());
+        assert!(SeedPhrase::try_from(TEST_PHRASE).is_ok());
     }
 
     #[test]
@@ -75,9 +76,16 @@ mod tests {
     }
 
     #[test]
-    fn test2() {
-        let phrase = "cash antique chimney egg enact blast embody ecology dust fiction hope black crisp thunder tiny fame mixture object text boil odor minor ordinary deer";
-        let result = SeedPhrase::try_from(phrase);
+    fn test_debug_redacted() {
+        let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
+        let debug_str = format!("{seed:?}");
+        assert!(debug_str.contains("REDACTED"));
+        assert!(!debug_str.contains("walk"));
+    }
+
+    #[test]
+    fn test_24_word_entropy_vector() {
+        let result = SeedPhrase::try_from(KNOWN_PHRASE);
         assert!(result.is_ok(), "error: {:?}", result.err());
 
         let entropy = result.unwrap().entropy();

@@ -1,22 +1,16 @@
-use crate::model::{Network, PinPolicy, Slot, TouchPolicy};
+use crate::model::{Network, PinPolicy, TouchPolicy};
 
-#[derive(Clone, Copy)]
+// What to do when the YubiKey already holds a wallet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Overwrite {
+    Refuse,
+    Allow,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct WalletConfig {
-    pub payment_slot: Slot,
-    pub stake_slot: Slot,
     pub pin_policy: PinPolicy,
     pub touch_policy: TouchPolicy,
     pub network: Network,
-}
-
-impl Default for WalletConfig {
-    fn default() -> Self {
-        Self {
-            payment_slot: Slot::Signature,
-            stake_slot: Slot::KeyManagement,
-            pin_policy: PinPolicy::Always,
-            touch_policy: TouchPolicy::Always,
-            network: Network::default(),
-        }
-    }
+    pub overwrite: Overwrite,
 }

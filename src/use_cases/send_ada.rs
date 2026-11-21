@@ -1,16 +1,12 @@
 use crate::error::{YkadaError, YkadaResult};
-use crate::logic::decode_bech32_address;
-use crate::model::{Network, Pin, SendMode, SendOutcome, Slot};
-use crate::ports::{DeviceFinder, DeviceReader, Signer, TipFetcher, TxSubmitter, UtxoFetcher};
-use crate::use_cases::build_transaction::{
-    sign_and_submit_transaction_use_case, sign_transaction_use_case, SignAndSubmitParams,
-    TransactionParams,
-};
+use crate::logic::parse_recipient;
+use crate::model::{Network, Pin, SendMode, SendOutcome};
+use crate::ports::{DeviceFinder, TipFetcher, TxSubmitter, UtxoFetcher};
+use crate::use_cases::build_transaction::TransactionParams;
+use crate::use_cases::sign_external_tx::{finish_tx, FinishTxParams};
 use crate::use_cases::{build_transaction_use_case, wallet_info_use_case};
 
-pub(crate) struct SendAdaParams {
-    pub payment_slot: Slot,
-    pub stake_slot: Slot,
+pub struct SendAdaParams {
     pub network: Network,
     pub recipient: String,
     pub send_lovelace: u64,
@@ -19,96 +15,130 @@ pub(crate) struct SendAdaParams {
     pub pin: Option<Pin>,
 }
 
-pub(crate) fn send_ada_use_case<F, U, T, X>(
+pub(crate) fn send_ada_use_case<F, C>(
     finder: &F,
-    utxo_fetcher: &U,
-    tip_fetcher: &T,
-    tx_submitter: &X,
+    chain: &C,
     params: SendAdaParams,
 ) -> YkadaResult<SendOutcome>
 where
     F: DeviceFinder,
-    F::Device: Signer + DeviceReader,
-    U: UtxoFetcher,
-    T: TipFetcher,
-    X: TxSubmitter,
+    C: UtxoFetcher + TipFetcher + TxSubmitter,
 {
-    let wallet = wallet_info_use_case(
-        finder,
-        params.payment_slot,
-        params.stake_slot,
-        params.network,
-    )?;
-    let recipient_bytes = decode_bech32_address(&params.recipient)?;
-
-    let SendAdaParams {
-        send_lovelace,
-        fee_lovelace,
-        payment_slot,
-        mode,
-        pin,
-        ..
-    } = params;
-
-    let change_address = wallet.address.ok_or_else(|| {
-        YkadaError::NetworkError("no wallet on YubiKey — import or generate first".into())
-    })?;
-    let payment_vkey_opt = wallet.payment_vk.map(|vk| vk.to_bytes());
-
-    let tx_params = TransactionParams {
-        recipient_address_bytes: recipient_bytes,
-        send_lovelace,
-        fee_lovelace,
-        change_address,
+    let recipient = parse_recipient(&params.recipient, params.network)?;
+    let wallet = wallet_info_use_case(finder, params.network)?;
+    let (Some(change_address), Some(payment_vk)) = (wallet.address, wallet.payment_vk) else {
+        return Err(YkadaError::WalletState(
+            "no wallet on YubiKey — import or generate first".into(),
+        ));
     };
 
-    match mode {
-        SendMode::DryRun => {
-            build_transaction_use_case(utxo_fetcher, tip_fetcher, tx_params).map(SendOutcome::Cbor)
-        }
+    let unsigned = build_transaction_use_case(
+        chain,
+        chain,
+        TransactionParams {
+            recipient,
+            send_lovelace: params.send_lovelace,
+            fee_lovelace: params.fee_lovelace,
+            change_address,
+        },
+    )?;
 
-        SendMode::SignOnly => {
-            let payment_vkey = payment_vkey_opt
-                .ok_or_else(|| YkadaError::NetworkError("no payment key on YubiKey".into()))?;
-            let mut device = finder.find_first()?;
-            sign_transaction_use_case(
-                utxo_fetcher,
-                tip_fetcher,
-                &mut device,
-                into_sign_params(tx_params, payment_vkey, payment_slot, pin),
-            )
-            .map(SendOutcome::Cbor)
-        }
-
-        SendMode::SignAndSubmit => {
-            let payment_vkey = payment_vkey_opt
-                .ok_or_else(|| YkadaError::NetworkError("no payment key on YubiKey".into()))?;
-            let mut device = finder.find_first()?;
-            sign_and_submit_transaction_use_case(
-                utxo_fetcher,
-                tip_fetcher,
-                &mut device,
-                tx_submitter,
-                into_sign_params(tx_params, payment_vkey, payment_slot, pin),
-            )
-            .map(SendOutcome::TxHash)
-        }
-    }
+    finish_tx(
+        finder,
+        chain,
+        unsigned,
+        FinishTxParams {
+            payment_vkey: payment_vk.to_bytes(),
+            pin: params.pin,
+            mode: params.mode,
+        },
+    )
 }
 
-fn into_sign_params(
-    tx: TransactionParams,
-    payment_vkey: [u8; 32],
-    payment_slot: Slot,
-    pin: Option<Pin>,
-) -> SignAndSubmitParams {
-    SignAndSubmitParams {
-        recipient_address_bytes: tx.recipient_address_bytes,
-        send_lovelace: tx.send_lovelace,
-        fee_lovelace: tx.fee_lovelace,
-        change_address: tx.change_address,
-        payment_vkey,
-        payment_slot,
-        pin,
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::adapters::fake_chain::FakeChain;
+    use crate::adapters::fake_yubikey::{FakeDeviceFinder, FakeYubiKey};
+    use crate::model::{PAYMENT_SLOT, STAKE_SLOT};
+    use crate::test_vectors::RECIPIENT;
+    use crate::use_cases::{summarize_tx, TxSummary};
+    use ed25519_dalek::SigningKey;
+
+    fn wallet() -> FakeYubiKey {
+        FakeYubiKey::empty()
+            .with_key(PAYMENT_SLOT, SigningKey::from_bytes(&[1; 32]))
+            .with_key(STAKE_SLOT, SigningKey::from_bytes(&[2; 32]))
+    }
+
+    fn send(
+        device: FakeYubiKey,
+        chain: &FakeChain,
+        mode: SendMode,
+        pin: &str,
+    ) -> YkadaResult<SendOutcome> {
+        send_ada_use_case(
+            &FakeDeviceFinder(device),
+            chain,
+            SendAdaParams {
+                network: Network::Preview,
+                recipient: RECIPIENT.into(),
+                send_lovelace: 2_000_000,
+                fee_lovelace: 200_000,
+                mode,
+                pin: Some(pin.parse().unwrap()),
+            },
+        )
+    }
+
+    fn decoded(outcome: SendOutcome) -> TxSummary {
+        match outcome {
+            SendOutcome::Cbor(cbor) => summarize_tx(&hex::encode(cbor)).unwrap(),
+            SendOutcome::TxHash(hash) => panic!("expected CBOR, got {hash}"),
+        }
+    }
+
+    #[test]
+    fn test_dry_run_neither_signs_nor_submits() {
+        let chain = FakeChain::new(&[10_000_000]);
+        let outcome = send(wallet(), &chain, SendMode::DryRun, "123456").unwrap();
+        assert_eq!(decoded(outcome).witness_count, 0);
+        assert!(chain.submitted().is_empty());
+    }
+
+    #[test]
+    fn test_sign_only_signs_but_does_not_submit() {
+        let chain = FakeChain::new(&[10_000_000]);
+        let outcome = send(wallet(), &chain, SendMode::SignOnly, "123456").unwrap();
+        assert_eq!(decoded(outcome).witnesses_verified, 1);
+        assert!(chain.submitted().is_empty());
+    }
+
+    #[test]
+    fn test_submits_the_signed_transaction_and_reports_its_id() {
+        let chain = FakeChain::new(&[10_000_000]);
+        let outcome = send(wallet(), &chain, SendMode::SignAndSubmit, "123456").unwrap();
+        let [submitted] = &chain.submitted()[..] else {
+            panic!("expected exactly one submission");
+        };
+        let summary = summarize_tx(&hex::encode(submitted)).unwrap();
+        assert_eq!(summary.witnesses_verified, 1);
+        assert!(matches!(outcome, SendOutcome::TxHash(id) if id == summary.body_hash_hex));
+    }
+
+    #[test]
+    fn test_wrong_pin_submits_nothing() {
+        let chain = FakeChain::new(&[10_000_000]);
+        assert!(send(wallet(), &chain, SendMode::SignAndSubmit, "999999").is_err());
+        assert!(chain.submitted().is_empty());
+    }
+
+    #[test]
+    fn test_requires_a_wallet() {
+        let chain = FakeChain::new(&[10_000_000]);
+        assert!(matches!(
+            send(FakeYubiKey::empty(), &chain, SendMode::DryRun, "123456"),
+            Err(YkadaError::WalletState(_))
+        ));
     }
 }

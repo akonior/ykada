@@ -1,32 +1,20 @@
-use pallas_addresses::Address;
+use pallas_addresses::{Address, ShelleyAddress};
 use pallas_crypto::hash::Hash;
-use pallas_crypto::key::ed25519::PublicKey as PallasPublicKey;
-use pallas_txbuilder::{BuildConway, BuiltTransaction, Input, Output, StagingTransaction};
-use tracing::{debug, info};
+use pallas_txbuilder::{BuildConway, Input, Output, StagingTransaction};
 
-use super::sign_data::{sign_data_use_case, SignDataParams};
 use crate::error::{YkadaError, YkadaResult};
-use crate::logic::{select_inputs, Bech32Encodable};
-use crate::model::{CardanoAddress, Pin, Slot, Utxo};
-use crate::ports::{Signer, TipFetcher, TxSubmitter, UtxoFetcher};
+use crate::logic::select_inputs;
+use crate::model::Utxo;
+use crate::ports::{TipFetcher, UtxoFetcher};
 
 pub(crate) struct TransactionParams {
-    pub recipient_address_bytes: Vec<u8>,
+    pub recipient: Address,
     pub send_lovelace: u64,
     pub fee_lovelace: u64,
-    pub change_address: CardanoAddress,
+    pub change_address: ShelleyAddress,
 }
 
-pub(super) struct SignAndSubmitParams {
-    pub recipient_address_bytes: Vec<u8>,
-    pub send_lovelace: u64,
-    pub fee_lovelace: u64,
-    pub change_address: CardanoAddress,
-    pub payment_vkey: [u8; 32],
-    pub payment_slot: Slot,
-    pub pin: Option<Pin>,
-}
-
+// Build an unsigned Conway transaction paying `recipient` from the wallet's UTxOs.
 pub(crate) fn build_transaction_use_case<U, T>(
     utxo_fetcher: &U,
     tip_fetcher: &T,
@@ -36,383 +24,174 @@ where
     U: UtxoFetcher,
     T: TipFetcher,
 {
-    let change_bech32 = params.change_address.to_bech32()?;
-    info!("Building unsigned transaction (change: {})", change_bech32);
-
-    let utxos = utxo_fetcher.fetch_utxos(&change_bech32)?;
-    debug!("Fetched {} UTxO(s)", utxos.len());
-
+    let utxos = utxo_fetcher.fetch_utxos(&params.change_address.to_bech32()?)?;
     let tip_slot = tip_fetcher.fetch_tip_slot()?;
-    debug!("Chain tip slot: {}", tip_slot);
-
     let built = build_staged(&utxos, tip_slot, &params)?
         .build_conway_raw()
-        .map_err(|e| YkadaError::NetworkError(format!("tx build error: {e}")))?;
-
-    info!(
-        "Unsigned transaction built ({} bytes)",
-        built.tx_bytes.0.len()
-    );
-    debug!("Transaction body hash: {}", hex::encode(built.tx_hash.0));
-    debug!("Unsigned CBOR: {}", hex::encode(&built.tx_bytes.0));
-
+        .map_err(|e| YkadaError::Tx(format!("tx build error: {e}")))?;
     Ok(built.tx_bytes.0)
 }
 
-pub(super) fn sign_transaction_use_case<U, T, S>(
-    utxo_fetcher: &U,
-    tip_fetcher: &T,
-    signer: &mut S,
-    params: SignAndSubmitParams,
-) -> YkadaResult<Vec<u8>>
-where
-    U: UtxoFetcher,
-    T: TipFetcher,
-    S: Signer,
-{
-    build_and_sign(utxo_fetcher, tip_fetcher, signer, params).map(|signed| signed.tx_bytes.0)
-}
+// Conservative ADA-only min-UTxO floor. The exact value derives from the
+// protocol's coins_per_utxo_byte; 1 ADA comfortably covers a simple output and
+// keeps us from building a tx the node will reject for a dust/zero output.
+const MIN_UTXO_LOVELACE: u64 = 1_000_000;
 
-pub(super) fn sign_and_submit_transaction_use_case<U, T, S, X>(
-    utxo_fetcher: &U,
-    tip_fetcher: &T,
-    signer: &mut S,
-    tx_submitter: &X,
-    params: SignAndSubmitParams,
-) -> YkadaResult<String>
-where
-    U: UtxoFetcher,
-    T: TipFetcher,
-    S: Signer,
-    X: TxSubmitter,
-{
-    let signed = build_and_sign(utxo_fetcher, tip_fetcher, signer, params)?;
-    info!("Submitting transaction to network");
-    let tx_hash = tx_submitter.submit_tx(&signed.tx_bytes.0)?;
-    info!("Transaction submitted: {}", tx_hash);
-    Ok(tx_hash)
-}
-
-fn build_and_sign<U, T, S>(
-    utxo_fetcher: &U,
-    tip_fetcher: &T,
-    signer: &mut S,
-    params: SignAndSubmitParams,
-) -> YkadaResult<BuiltTransaction>
-where
-    U: UtxoFetcher,
-    T: TipFetcher,
-    S: Signer,
-{
-    let core_params = TransactionParams {
-        recipient_address_bytes: params.recipient_address_bytes,
-        send_lovelace: params.send_lovelace,
-        fee_lovelace: params.fee_lovelace,
-        change_address: params.change_address,
-    };
-
-    let change_bech32 = core_params.change_address.to_bech32()?;
-    info!(
-        "Building and signing transaction (change: {})",
-        change_bech32
-    );
-
-    let utxos = utxo_fetcher.fetch_utxos(&change_bech32)?;
-    debug!("Fetched {} UTxO(s)", utxos.len());
-
-    let tip_slot = tip_fetcher.fetch_tip_slot()?;
-    debug!("Chain tip slot: {}", tip_slot);
-
-    let built = build_staged(&utxos, tip_slot, &core_params)?
-        .build_conway_raw()
-        .map_err(|e| YkadaError::NetworkError(format!("tx build error: {e}")))?;
-
-    debug!("Transaction body hash: {}", hex::encode(built.tx_hash.0));
-    debug!("Unsigned CBOR: {}", hex::encode(&built.tx_bytes.0));
-
-    info!(
-        "Signing transaction (slot: {:?}) hash: {}",
-        params.payment_slot,
-        hex::encode(built.tx_hash.0)
-    );
-
-    let sig = sign_data_use_case(
-        signer,
-        &built.tx_hash.0,
-        SignDataParams {
-            slot: params.payment_slot,
-            pin: params.pin,
-        },
-    )?;
-
-    debug!("Signature ({} bytes): {}", sig.len(), hex::encode(sig));
-
-    let pubkey = PallasPublicKey::from(params.payment_vkey);
-    debug!("Verification key: {}", hex::encode(params.payment_vkey));
-
-    let signed = built
-        .add_signature(pubkey, sig)
-        .map_err(|e| YkadaError::NetworkError(format!("add signature error: {e}")))?;
-
-    info!("Transaction signed ({} bytes)", signed.tx_bytes.0.len());
-    debug!("Signed CBOR: {}", hex::encode(&signed.tx_bytes.0));
-
-    Ok(signed)
-}
+// Validity window (~2h at 1 slot/s): bounds how long a submitted tx can be re-submitted.
+const TTL_OFFSET_SLOTS: u64 = 7200;
 
 fn build_staged(
     utxos: &[Utxo],
     tip_slot: u64,
     params: &TransactionParams,
 ) -> YkadaResult<StagingTransaction> {
-    let recipient_addr = Address::from_bytes(&params.recipient_address_bytes)
-        .map_err(|e| YkadaError::NetworkError(format!("invalid recipient address: {e}")))?;
+    if params.send_lovelace < MIN_UTXO_LOVELACE {
+        return Err(YkadaError::Tx(format!(
+            "send amount {} lovelace is below the min-UTxO floor of {MIN_UTXO_LOVELACE} lovelace",
+            params.send_lovelace
+        )));
+    }
 
-    let change_addr = Address::from_bytes(&params.change_address.to_bytes())
-        .map_err(|e| YkadaError::NetworkError(format!("invalid change address: {e}")))?;
-
-    let required = params.send_lovelace + params.fee_lovelace;
+    let required = params
+        .send_lovelace
+        .checked_add(params.fee_lovelace)
+        .ok_or_else(|| YkadaError::Tx("send amount + fee overflows u64".into()))?;
     let (selected_indices, total_input) = select_inputs(utxos, required)?;
+    // select_inputs guarantees total_input >= required.
     let change_lovelace = total_input - required;
 
-    debug!(
-        "Coin selection: {} UTxO(s) selected, total_input={} lovelace, required={} lovelace, change={} lovelace",
-        selected_indices.len(), total_input, required, change_lovelace
-    );
-    for &i in &selected_indices {
-        debug!("  Input: {}#{}", utxos[i].tx_hash, utxos[i].tx_index);
+    if change_lovelace > 0 && change_lovelace < MIN_UTXO_LOVELACE {
+        return Err(YkadaError::Tx(format!(
+            "change {change_lovelace} lovelace is below the min-UTxO floor of {MIN_UTXO_LOVELACE}; raise --fee or the send amount to absorb the dust"
+        )));
     }
-    debug!(
-        "Outputs: send={} lovelace to recipient, {} lovelace change back, fee={} lovelace, TTL slot={}",
-        params.send_lovelace, change_lovelace, params.fee_lovelace, tip_slot + 7200
-    );
 
-    selected_indices
+    let ttl_slot = tip_slot
+        .checked_add(TTL_OFFSET_SLOTS)
+        .ok_or_else(|| YkadaError::Tx("chain tip slot + TTL offset overflows u64".into()))?;
+
+    let staged = selected_indices
         .iter()
         .try_fold(StagingTransaction::new(), |tx, &i| {
             parse_tx_hash(&utxos[i].tx_hash)
                 .map(|hash| tx.input(Input::new(hash, utxos[i].tx_index)))
-        })
-        .map(|tx| {
-            tx.output(Output::new(recipient_addr, params.send_lovelace))
-                .output(Output::new(change_addr, change_lovelace))
-                .fee(params.fee_lovelace)
-                .invalid_from_slot(tip_slot + 7200)
-        })
+        })?
+        .output(Output::new(params.recipient.clone(), params.send_lovelace))
+        .fee(params.fee_lovelace)
+        .invalid_from_slot(ttl_slot);
+
+    // A zero-value change output is invalid on Cardano; only emit change when present.
+    Ok(if change_lovelace == 0 {
+        staged
+    } else {
+        staged.output(Output::new(
+            Address::Shelley(params.change_address.clone()),
+            change_lovelace,
+        ))
+    })
 }
 
 fn parse_tx_hash(hex_str: &str) -> YkadaResult<Hash<32>> {
     let bytes: [u8; 32] = hex::decode(hex_str)
-        .map_err(|e| YkadaError::NetworkError(format!("invalid tx hash hex: {e}")))?
+        .map_err(|e| YkadaError::Tx(format!("invalid tx hash hex: {e}")))?
         .try_into()
-        .map_err(|_| YkadaError::NetworkError("tx hash must be 32 bytes".into()))?;
+        .map_err(|_| YkadaError::Tx("tx hash must be 32 bytes".into()))?;
     Ok(Hash::new(bytes))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logic::{derive_cardano_address, derive_signing_key};
-    use crate::model::{DerivationPath, Network, SeedPhrase, TokenBalance};
+    use crate::adapters::fake_chain::FakeChain;
+    use crate::logic::derive_wallet_keys;
+    use crate::model::{Network, SeedPhrase};
+    use crate::test_vectors::{RECIPIENT, TEST_PHRASE};
+    use pallas_primitives::{conway, Fragment};
 
-    const TEST_PHRASE: &str =
-        "test walk nut penalty hip pave soap entry language right filter choice";
-
-    // A valid preview testnet bech32 address for the recipient
-    const RECIPIENT_BECH32: &str =
-        "addr_test1qrfw6ye0m7f2kvqapnkp7jzlfydq0h6j5rnsvj2wm9vlhg0y86x894xrsh5xu8qlm6yld03hp7sx6u552w6uupd799fqz0vpte";
-
-    fn test_change_address() -> CardanoAddress {
+    fn build(utxos: &[u64], send_lovelace: u64) -> YkadaResult<Vec<u8>> {
         let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
-        let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
-        let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
-        let payment_vk = derive_signing_key(&seed, &payment_path)
-            .unwrap()
-            .verifying_key();
-        let stake_vk = derive_signing_key(&seed, &stake_path)
-            .unwrap()
-            .verifying_key();
-        derive_cardano_address(&payment_vk, &stake_vk, Network::Preview)
+        let chain = FakeChain::new(utxos);
+        build_transaction_use_case(
+            &chain,
+            &chain,
+            TransactionParams {
+                recipient: Address::from_bech32(RECIPIENT).unwrap(),
+                send_lovelace,
+                fee_lovelace: 200_000,
+                change_address: derive_wallet_keys(&seed, Network::Preview).address,
+            },
+        )
     }
 
-    fn recipient_bytes() -> Vec<u8> {
-        let (_, data, _) = bech32::decode(RECIPIENT_BECH32).unwrap();
-        bech32::convert_bits(&data, 5, 8, false).unwrap()
+    fn build_error(utxos: &[u64], send_lovelace: u64) -> String {
+        build(utxos, send_lovelace).unwrap_err().to_string()
     }
 
-    struct FakeUtxoFetcher {
-        utxos: Vec<Utxo>,
-    }
-
-    impl UtxoFetcher for FakeUtxoFetcher {
-        fn fetch_utxos(&self, _address: &str) -> YkadaResult<Vec<Utxo>> {
-            Ok(self
-                .utxos
-                .iter()
-                .map(|u| Utxo {
-                    tx_hash: u.tx_hash.clone(),
-                    tx_index: u.tx_index,
-                    lovelace: u.lovelace,
-                    tokens: u
-                        .tokens
-                        .iter()
-                        .map(|t| TokenBalance {
-                            policy_id: t.policy_id.clone(),
-                            asset_name: t.asset_name.clone(),
-                            quantity: t.quantity,
-                        })
-                        .collect(),
-                })
-                .collect())
-        }
-    }
-
-    struct FakeTipFetcher {
-        slot: u64,
-    }
-
-    impl TipFetcher for FakeTipFetcher {
-        fn fetch_tip_slot(&self) -> YkadaResult<u64> {
-            Ok(self.slot)
-        }
-    }
-
-    struct FakeSigner;
-
-    impl Signer for FakeSigner {
-        fn sign(&mut self, _data: &[u8], _slot: Slot, _pin: Option<&Pin>) -> YkadaResult<Vec<u8>> {
-            Ok(vec![0u8; 64])
-        }
-    }
-
-    struct FakeTxSubmitter {
-        expected_hash: String,
-    }
-
-    impl TxSubmitter for FakeTxSubmitter {
-        fn submit_tx(&self, _signed_tx_cbor: &[u8]) -> YkadaResult<String> {
-            Ok(self.expected_hash.clone())
-        }
-    }
-
-    fn fake_utxo(tx_hash: &str, lovelace: u64) -> Utxo {
-        Utxo {
-            tx_hash: tx_hash.into(),
-            tx_index: 0,
-            lovelace,
-            tokens: vec![],
-        }
+    fn body(cbor: &[u8]) -> conway::TransactionBody {
+        conway::Tx::decode_fragment(cbor).unwrap().transaction_body
     }
 
     #[test]
-    fn test_build_tx_sufficient_funds() {
-        let utxo_fetcher = FakeUtxoFetcher {
-            utxos: vec![fake_utxo(
-                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                10_000_000,
-            )],
-        };
-        let tip_fetcher = FakeTipFetcher { slot: 1_000_000 };
-        let params = TransactionParams {
-            recipient_address_bytes: recipient_bytes(),
-            send_lovelace: 2_000_000,
-            fee_lovelace: 200_000,
-            change_address: test_change_address(),
-        };
-
-        let result = build_transaction_use_case(&utxo_fetcher, &tip_fetcher, params);
-        assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
-        assert!(!result.unwrap().is_empty());
+    fn test_build_with_change() {
+        let cbor = build(&[10_000_000], 2_000_000).unwrap();
+        assert_eq!(body(&cbor).outputs.len(), 2);
     }
 
     #[test]
-    fn test_build_tx_insufficient_funds() {
-        let utxo_fetcher = FakeUtxoFetcher {
-            utxos: vec![fake_utxo(
-                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-                1_000_000,
-            )],
-        };
-        let tip_fetcher = FakeTipFetcher { slot: 1_000_000 };
-        let params = TransactionParams {
-            recipient_address_bytes: recipient_bytes(),
-            send_lovelace: 2_000_000,
-            fee_lovelace: 200_000,
-            change_address: test_change_address(),
-        };
+    fn test_build_sets_fee_and_validity_window() {
+        let cbor = build(&[10_000_000], 2_000_000).unwrap();
+        assert_eq!(body(&cbor).fee, 200_000);
+        assert_eq!(body(&cbor).ttl, Some(1_000_000 + TTL_OFFSET_SLOTS));
+    }
 
-        let result = build_transaction_use_case(&utxo_fetcher, &tip_fetcher, params);
-        assert!(result.is_err());
-        let msg = result.unwrap_err().to_string();
+    #[test]
+    fn test_zero_change_omits_change_output() {
+        let cbor = build(&[2_200_000], 2_000_000).unwrap();
+        assert_eq!(body(&cbor).outputs.len(), 1);
+    }
+
+    #[test]
+    fn test_insufficient_funds() {
+        let msg = build_error(&[1_000_000], 2_000_000);
         assert!(msg.contains("insufficient funds"), "got: {msg}");
     }
 
     #[test]
-    fn test_coin_selection_picks_minimum() {
-        // Three UTxOs: 5 ADA, 3 ADA, 10 ADA — need 6 ADA
-        // Largest-first: picks 10 ADA (1 UTxO), total = 10 >= 6
-        let utxos = vec![
-            fake_utxo(
-                "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-                5_000_000,
-            ),
-            fake_utxo(
-                "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-                3_000_000,
-            ),
-            fake_utxo(
-                "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                10_000_000,
-            ),
-        ];
-        let (selected, total) = select_inputs(&utxos, 6_000_000).unwrap();
-        // Only the 10 ADA UTxO (index 2) should be selected
-        assert_eq!(selected.len(), 1);
-        assert_eq!(selected[0], 2);
-        assert_eq!(total, 10_000_000);
+    fn test_sub_min_change_errors() {
+        let msg = build_error(&[2_700_000], 2_000_000);
+        assert!(msg.contains("min-UTxO"), "got: {msg}");
     }
 
     #[test]
-    fn test_sign_and_submit_returns_tx_hash() {
+    fn test_send_below_min_utxo_errors() {
+        let msg = build_error(&[10_000_000], 500_000);
+        assert!(msg.contains("min-UTxO"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_ttl_overflow_errors() {
+        let utxos = [10_000_000].map(|lovelace| Utxo {
+            tx_hash: "00".repeat(32),
+            tx_index: 0,
+            lovelace,
+            has_tokens: false,
+        });
         let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
-        let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
-        let payment_vk = crate::logic::derive_signing_key(&seed, &payment_path)
-            .unwrap()
-            .verifying_key();
-        let payment_vkey: [u8; 32] = payment_vk.to_bytes();
-
-        let utxo_fetcher = FakeUtxoFetcher {
-            utxos: vec![fake_utxo(
-                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                10_000_000,
-            )],
-        };
-        let tip_fetcher = FakeTipFetcher { slot: 1_000_000 };
-        let known_hash = "deadbeefcafe".to_string();
-        let tx_submitter = FakeTxSubmitter {
-            expected_hash: known_hash.clone(),
-        };
-        let mut signer = FakeSigner;
-
-        let params = SignAndSubmitParams {
-            recipient_address_bytes: recipient_bytes(),
+        let params = TransactionParams {
+            recipient: Address::from_bech32(RECIPIENT).unwrap(),
             send_lovelace: 2_000_000,
             fee_lovelace: 200_000,
-            change_address: test_change_address(),
-            payment_vkey,
-            payment_slot: Slot::Signature,
-            pin: None,
+            change_address: derive_wallet_keys(&seed, Network::Preview).address,
         };
+        let msg = build_staged(&utxos, u64::MAX, &params)
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("overflows"), "got: {msg}");
+    }
 
-        let result = sign_and_submit_transaction_use_case(
-            &utxo_fetcher,
-            &tip_fetcher,
-            &mut signer,
-            &tx_submitter,
-            params,
-        );
-
-        assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
-        assert_eq!(result.unwrap(), known_hash);
+    #[test]
+    fn test_required_overflow_errors() {
+        let msg = build_error(&[10_000_000], u64::MAX);
+        assert!(msg.contains("overflows"), "got: {msg}");
     }
 }

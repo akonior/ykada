@@ -1,8 +1,7 @@
 use thiserror::Error;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum PinPolicy {
-    #[default]
     Never,
     Once,
     Always,
@@ -22,16 +21,15 @@ impl PinPolicy {
             yubikey::PinPolicy::Never => Ok(PinPolicy::Never),
             yubikey::PinPolicy::Once => Ok(PinPolicy::Once),
             yubikey::PinPolicy::Always => Ok(PinPolicy::Always),
-            _ => Err(PolicyError::UnsupportedPinPolicy {
-                policy: format!("{:?}", policy),
+            other => Err(PolicyError::UnsupportedPinPolicy {
+                policy: format!("{other:?}"),
             }),
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum TouchPolicy {
-    #[default]
     Never,
     Always,
     Cached,
@@ -51,8 +49,8 @@ impl TouchPolicy {
             yubikey::TouchPolicy::Never => Ok(TouchPolicy::Never),
             yubikey::TouchPolicy::Always => Ok(TouchPolicy::Always),
             yubikey::TouchPolicy::Cached => Ok(TouchPolicy::Cached),
-            _ => Err(PolicyError::UnsupportedTouchPolicy {
-                policy: format!("{:?}", policy),
+            other => Err(PolicyError::UnsupportedTouchPolicy {
+                policy: format!("{other:?}"),
             }),
         }
     }
@@ -72,43 +70,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_pin_policy_conversion() {
-        let policy = PinPolicy::Always;
-        let yubikey_policy = policy.to_yubikey_pin_policy();
-        assert_eq!(yubikey_policy, yubikey::PinPolicy::Always);
+    fn test_pin_policy_round_trip() {
+        [PinPolicy::Never, PinPolicy::Once, PinPolicy::Always]
+            .into_iter()
+            .for_each(|policy| {
+                let converted = policy.to_yubikey_pin_policy();
+                assert_eq!(PinPolicy::from_yubikey_pin_policy(converted), Ok(policy));
+            });
     }
 
     #[test]
-    fn test_pin_policy_from_yubikey() {
-        let yubikey_policy = yubikey::PinPolicy::Always;
-        let policy = PinPolicy::from_yubikey_pin_policy(yubikey_policy).unwrap();
-        assert_eq!(policy, PinPolicy::Always);
-    }
-
-    #[test]
-    fn test_touch_policy_conversion() {
-        let policy = TouchPolicy::Always;
-        let yubikey_policy = policy.to_yubikey_touch_policy();
-        assert_eq!(yubikey_policy, yubikey::TouchPolicy::Always);
-    }
-
-    #[test]
-    fn test_touch_policy_from_yubikey() {
-        let yubikey_policy = yubikey::TouchPolicy::Always;
-        let policy = TouchPolicy::from_yubikey_touch_policy(yubikey_policy).unwrap();
-        assert_eq!(policy, TouchPolicy::Always);
-    }
-
-    #[test]
-    fn test_policy_error_display() {
-        let err = PolicyError::UnsupportedPinPolicy {
-            policy: "Unknown".to_string(),
-        };
-        assert!(err.to_string().contains("not supported"));
-
-        let err = PolicyError::UnsupportedTouchPolicy {
-            policy: "Unknown".to_string(),
-        };
-        assert!(err.to_string().contains("not supported"));
+    fn test_touch_policy_round_trip() {
+        [TouchPolicy::Never, TouchPolicy::Always, TouchPolicy::Cached]
+            .into_iter()
+            .for_each(|policy| {
+                let converted = policy.to_yubikey_touch_policy();
+                assert_eq!(
+                    TouchPolicy::from_yubikey_touch_policy(converted),
+                    Ok(policy)
+                );
+            });
     }
 }

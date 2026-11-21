@@ -27,12 +27,6 @@ impl Pin {
     }
 }
 
-impl Default for Pin {
-    fn default() -> Self {
-        Self(Self::DEFAULT.to_vec())
-    }
-}
-
 impl FromStr for Pin {
     type Err = PinError;
 
@@ -77,14 +71,8 @@ mod tests {
     }
 
     #[test]
-    fn test_pin_default() {
-        let pin = Pin::default();
-        assert_eq!(pin.as_bytes(), b"123456");
-    }
-
-    #[test]
     fn test_pin_debug_redacted() {
-        let pin = Pin::default();
+        let pin = Pin::from_str("123456").unwrap();
         let debug_str = format!("{:?}", pin);
         assert!(debug_str.contains("REDACTED"));
         assert!(!debug_str.contains("123456"));

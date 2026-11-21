@@ -1,7 +1,6 @@
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Network {
     Mainnet,
     Preprod,
-    #[default]
     Preview,
 }

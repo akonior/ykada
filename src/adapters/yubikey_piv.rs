@@ -5,19 +5,14 @@ use crate::ports::{
     SlotPolicyReader,
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use std::convert::TryInto;
-use tracing::{debug, info};
 use yubikey::piv::{import_cv_key, sign_data, AlgorithmId};
 use yubikey::{Context, MgmKey, ObjectId, YubiKey};
 
-/// YubiKey data-object ID used to store the Cardano verifying key alongside an imported key.
-/// Uses the PIV certificate slot object IDs so each active key slot has a companion storage area.
+// The verifying key is stored in the slot's PIV certificate data object.
 fn slot_to_vk_object_id(slot: Slot) -> ObjectId {
     match slot {
-        Slot::Authentication => 0x005F_C105,
         Slot::Signature => 0x005F_C10A,
         Slot::KeyManagement => 0x005F_C10B,
-        Slot::CardAuthentication => 0x005F_C101,
     }
 }
 
@@ -36,7 +31,6 @@ impl DeviceFinder for PivDeviceFinder {
             0 => Err(YkadaError::NotFound),
             1 => {
                 let yk = devices.into_iter().next().expect("length checked above");
-                debug!("Connected to YubiKey serial={}", yk.serial());
                 Ok(PivYubiKey::new(yk))
             }
             count => Err(YkadaError::MultipleDevicesFound { count }),
@@ -57,13 +51,6 @@ impl PivYubiKey {
             authenticated: false,
         }
     }
-
-    fn ensure_authenticated(&mut self) -> YkadaResult<()> {
-        if !self.authenticated {
-            self.authenticate(None)?;
-        }
-        Ok(())
-    }
 }
 
 impl ManagementKeyVerifier for PivYubiKey {
@@ -82,17 +69,13 @@ impl ManagementKeyVerifier for PivYubiKey {
         })?;
 
         self.authenticated = true;
-        debug!("YubiKey authenticated with management key");
         Ok(())
     }
 }
 
 impl PinVerifier for PivYubiKey {
     fn verify_pin(&mut self, pin: &Pin) -> YkadaResult<()> {
-        self.device.verify_pin(pin.as_bytes())?;
-
-        debug!("PIN verified successfully");
-        Ok(())
+        Ok(self.device.verify_pin(pin.as_bytes())?)
     }
 }
 
@@ -103,15 +86,11 @@ impl KeyManager for PivYubiKey {
         vk: VerifyingKey,
         config: KeyConfig,
     ) -> YkadaResult<()> {
-        self.ensure_authenticated()?;
-
-        debug!("Importing key to slot: {:?}", config.slot);
-        debug!(
-            "Policies: PIN={:?}, Touch={:?}",
-            config.pin_policy, config.touch_policy
-        );
-        debug!("Private key (seed): {}", hex::encode(key.as_bytes()));
-        debug!("Verifying key: {}", hex::encode(vk.as_bytes()));
+        if !self.authenticated {
+            return Err(YkadaError::AuthenticationFailed {
+                reason: "management key not authenticated".into(),
+            });
+        }
 
         import_cv_key(
             &mut self.device,
@@ -122,44 +101,32 @@ impl KeyManager for PivYubiKey {
             config.pin_policy.to_yubikey_pin_policy(),
         )?;
 
-        // Store the Cardano verifying key (kL * G) so `read_public_key` can retrieve it.
-        // The YubiKey firmware uses standard RFC 8032 Ed25519 (SHA-512 expansion), which
-        // produces a different public key than the Cardano one, so metadata() can't be used.
         let mut vk_bytes = *vk.as_bytes();
         self.device
             .save_object(slot_to_vk_object_id(config.slot), &mut vk_bytes)?;
-
-        info!("Key imported successfully to slot {:?}", config.slot);
         Ok(())
     }
 }
 
 impl DeviceReader for PivYubiKey {
-    fn serial(&self) -> u32 {
-        self.device.serial().0
-    }
-
     fn firmware_version(&self) -> (u8, u8, u8) {
         let v = self.device.version();
         (v.major, v.minor, v.patch)
     }
 
     fn read_public_key(&mut self, slot: Slot) -> YkadaResult<Option<VerifyingKey>> {
-        // Read the Cardano verifying key stored by import_key / generate_key.
-        // We do NOT use metadata() because the YubiKey firmware uses standard RFC 8032
-        // Ed25519 (SHA-512 seed expansion) to derive its stored public key, which differs
-        // from the Cardano public key kL * G that we need for address derivation.
         match self.device.fetch_object(slot_to_vk_object_id(slot)) {
-            Ok(bytes) if bytes.len() == 32 => {
+            Ok(bytes) => {
                 let arr: [u8; 32] =
                     bytes[..]
                         .try_into()
                         .map_err(|_| YkadaError::InvalidKeyFormat {
-                            format: "Expected 32-byte stored verifying key".to_string(),
+                            format: format!("slot {slot:?} holds data not written by ykada (use --force to overwrite)"),
                         })?;
                 Ok(Some(VerifyingKey::from_bytes(&arr)?))
             }
-            _ => Ok(None),
+            Err(yubikey::Error::NotFound) => Ok(None),
+            Err(e) => Err(e.into()),
         }
     }
 }
@@ -179,90 +146,19 @@ impl SlotPolicyReader for PivYubiKey {
 }
 
 impl Signer for PivYubiKey {
-    fn sign(&mut self, data: &[u8], slot: Slot, pin: Option<&Pin>) -> YkadaResult<Vec<u8>> {
-        if let Some(pin) = pin {
-            self.verify_pin(pin)?;
-        }
-
-        debug!(
-            "Signing {} bytes with YubiKey: slot={:?} data={}",
-            data.len(),
-            slot,
-            hex::encode(data),
-        );
-
+    fn sign(&mut self, data: &[u8], slot: Slot, pin: Option<&Pin>) -> YkadaResult<[u8; 64]> {
+        pin.map_or(Ok(()), |pin| self.verify_pin(pin))?;
         let signature = sign_data(
             &mut self.device,
             data,
             AlgorithmId::Ed25519,
             slot.to_yubikey_slot_id(),
         )?;
-
-        let sig_bytes = signature.to_vec();
-        debug!("YubiKey signature: {}", hex::encode(&sig_bytes));
-        info!("YubiKey: signed {} bytes in slot {:?}", data.len(), slot);
-        Ok(sig_bytes)
+        signature
+            .as_slice()
+            .try_into()
+            .map_err(|_| YkadaError::InvalidSignatureLength {
+                actual: signature.len(),
+            })
     }
-}
-
-#[cfg(all(test, feature = "hardware-tests"))]
-mod tests {
-    use super::*;
-    use crate::logic::Bech32Encodable;
-    use crate::model::{ManagementKey, Network, SeedPhrase, WalletConfig};
-    use crate::run_yubikey_contract_tests;
-    use crate::use_cases::{generate_wallet_use_case, wallet_info_use_case};
-
-    const TESTING_MANAGEMENT_KEY: ManagementKey = ManagementKey::new([
-        1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 9,
-    ]);
-
-    const KNOWN_PHRASE: &str = "cash antique chimney egg enact blast embody ecology dust fiction hope black crisp thunder tiny fame mixture object text boil odor minor ordinary deer";
-    const KNOWN_ADDRESS_MAINNET: &str = "addr1qx2l2ttwpsxc8j4830x7hpz0qgaf2hkt6dn7x940vcneycwcnz39fcfw4xs5elpnpmfmh45vhx2qk3h8q56ma0zg9nnsvzxxtr";
-
-    #[test]
-    fn test_device_finder_success() {
-        let result = PivDeviceFinder.find_first();
-        assert!(result.is_ok(), "error: {:?}", result.err());
-    }
-
-    /// Imports the known seed phrase as a Mainnet wallet, then reads the keys back via
-    /// wallet_info_use_case and verifies the derived address matches the known correct value.
-    /// Requires a YubiKey with the testing management key configured.
-    #[test]
-    fn test_known_mainnet_address_round_trip() {
-        let finder = PivDeviceFinder;
-        let seed = SeedPhrase::try_from(KNOWN_PHRASE).expect("Invalid seed phrase");
-        let config = WalletConfig {
-            network: Network::Mainnet,
-            ..WalletConfig::default()
-        };
-
-        generate_wallet_use_case(&finder, Some(seed), config, Some(&TESTING_MANAGEMENT_KEY))
-            .expect("generate_wallet_use_case failed");
-
-        let info = wallet_info_use_case(
-            &finder,
-            config.payment_slot,
-            config.stake_slot,
-            config.network,
-        )
-        .expect("wallet_info_use_case failed");
-
-        let address = info
-            .address
-            .expect("address must be Some when both keys are present")
-            .to_bech32()
-            .expect("bech32 encoding failed");
-
-        assert_eq!(
-            address, KNOWN_ADDRESS_MAINNET,
-            "address mismatch for known seed phrase"
-        );
-    }
-
-    run_yubikey_contract_tests!(
-        real_yubikey_contract,
-        make = || PivDeviceFinder.find_first().expect("YubiKey not found")
-    );
 }

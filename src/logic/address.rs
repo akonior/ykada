@@ -1,55 +1,98 @@
-use crate::model::{CardanoAddress, Network};
-use blake2::digest::consts::U28;
-use blake2::{Blake2b, Digest};
+use crate::error::{YkadaError, YkadaResult};
+use crate::model::Network;
 use ed25519_dalek::VerifyingKey;
+use pallas_addresses::{
+    Address, Network as AddressNetwork, ShelleyAddress, ShelleyDelegationPart, ShelleyPaymentPart,
+};
+use pallas_crypto::hash::Hasher;
 
-type Blake2b224 = Blake2b<U28>;
+fn address_network(network: Network) -> AddressNetwork {
+    match network {
+        Network::Mainnet => AddressNetwork::Mainnet,
+        Network::Preprod | Network::Preview => AddressNetwork::Testnet,
+    }
+}
 
 pub(crate) fn derive_cardano_address(
     payment_vk: &VerifyingKey,
     stake_vk: &VerifyingKey,
     network: Network,
-) -> CardanoAddress {
-    let payment_hash: [u8; 28] = Blake2b224::digest(payment_vk.as_bytes()).into();
-    let stake_hash: [u8; 28] = Blake2b224::digest(stake_vk.as_bytes()).into();
-    CardanoAddress::from_key_hashes(payment_hash, stake_hash, network)
+) -> ShelleyAddress {
+    ShelleyAddress::new(
+        address_network(network),
+        ShelleyPaymentPart::key_hash(Hasher::<224>::hash(payment_vk.as_bytes())),
+        ShelleyDelegationPart::key_hash(Hasher::<224>::hash(stake_vk.as_bytes())),
+    )
+}
+
+// Accept only a Shelley payment address on the wallet's own network.
+pub(crate) fn parse_recipient(bech32: &str, network: Network) -> YkadaResult<Address> {
+    let expected = address_network(network);
+    match Address::from_bech32(bech32.trim()) {
+        Ok(Address::Shelley(a)) if a.network() == expected => Ok(Address::Shelley(a)),
+        Ok(Address::Shelley(a)) => Err(YkadaError::Tx(format!(
+            "recipient is a {:?} address but --network is {network:?}",
+            a.network()
+        ))),
+        Ok(_) => Err(YkadaError::Tx(
+            "recipient must be a Shelley payment address (addr1… / addr_test1…)".into(),
+        )),
+        Err(e) => Err(YkadaError::Tx(format!("invalid recipient address: {e}"))),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logic::Bech32Encodable;
+    use crate::test_vectors::RECIPIENT;
     use ed25519_dalek::SigningKey;
 
-    fn make_verifying_key(seed: u8) -> VerifyingKey {
-        let mut bytes = [0u8; 32];
-        bytes[0] = seed;
-        SigningKey::from_bytes(&bytes).verifying_key()
+    #[test]
+    fn test_address_prefix_follows_network() {
+        let vk = SigningKey::from_bytes(&[1; 32]).verifying_key();
+        let prefix = |network| {
+            let address = derive_cardano_address(&vk, &vk, network);
+            address
+                .to_bech32()
+                .unwrap()
+                .split_once('1')
+                .unwrap()
+                .0
+                .to_owned()
+        };
+        assert_eq!(prefix(Network::Mainnet), "addr");
+        assert_eq!(prefix(Network::Preprod), "addr_test");
+        assert_eq!(prefix(Network::Preview), "addr_test");
     }
 
     #[test]
-    fn test_hash_is_28_bytes() {
-        let payment_vk = make_verifying_key(1);
-        let stake_vk = make_verifying_key(2);
-        let addr = derive_cardano_address(&payment_vk, &stake_vk, Network::Preview);
-        assert_eq!(addr.to_bytes().len(), 57);
+    fn test_parse_recipient_accepts_matching_network() {
+        assert!(parse_recipient(RECIPIENT, Network::Preview).is_ok());
     }
 
     #[test]
-    fn test_testnet_address_prefix() {
-        let payment_vk = make_verifying_key(1);
-        let stake_vk = make_verifying_key(2);
-        let addr = derive_cardano_address(&payment_vk, &stake_vk, Network::Preview);
-        let encoded = addr.to_bech32().unwrap();
-        assert!(encoded.starts_with("addr_test1"), "got: {}", encoded);
+    fn test_parse_recipient_rejects_wrong_network() {
+        let msg = parse_recipient(RECIPIENT, Network::Mainnet)
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("--network"), "got: {msg}");
     }
 
     #[test]
-    fn test_mainnet_address_prefix() {
-        let payment_vk = make_verifying_key(1);
-        let stake_vk = make_verifying_key(2);
-        let addr = derive_cardano_address(&payment_vk, &stake_vk, Network::Mainnet);
-        let encoded = addr.to_bech32().unwrap();
-        assert!(encoded.starts_with("addr1"), "got: {}", encoded);
+    fn test_parse_recipient_rejects_stake_address() {
+        use pallas_addresses::{Address, StakeAddress};
+        let Ok(Address::Shelley(base)) = Address::from_bech32(RECIPIENT) else {
+            panic!("expected a Shelley address");
+        };
+        let stake = StakeAddress::try_from(base).unwrap().to_bech32().unwrap();
+        let msg = parse_recipient(&stake, Network::Preview)
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("Shelley payment address"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_parse_recipient_rejects_garbage() {
+        assert!(parse_recipient("not_an_address", Network::Preview).is_err());
     }
 }

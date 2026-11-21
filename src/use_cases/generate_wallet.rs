@@ -1,186 +1,134 @@
-use crate::error::YkadaResult;
-use crate::logic::{
-    check_firmware_version, derive_cardano_address, derive_signing_key, Bech32Encodable,
-    StakeVerifyingKey,
+use crate::error::{YkadaError, YkadaResult};
+use crate::logic::{check_firmware_version, derive_wallet_keys, WalletKeys};
+use crate::model::{
+    GeneratedWallet, ManagementKey, Overwrite, SeedPhrase, WalletConfig, PAYMENT_SLOT, STAKE_SLOT,
 };
-use crate::model::{DerivationPath, GeneratedWallet, ManagementKey, SeedPhrase, WalletConfig};
 use crate::ports::{DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier};
-use tracing::{debug, info};
 
-pub(crate) fn generate_wallet_use_case<F>(
+// Derive payment + stake keys from `seed` (or a fresh random one) and import them.
+pub(crate) fn generate_wallet_use_case<F: DeviceFinder>(
     finder: &F,
     seed: Option<SeedPhrase>,
     config: WalletConfig,
     mgmt_key: Option<&ManagementKey>,
-) -> YkadaResult<GeneratedWallet>
-where
-    F: DeviceFinder,
-    F::Device: KeyManager + ManagementKeyVerifier + DeviceReader,
-{
-    info!("Generating Cardano wallet (network: {:?})", config.network);
-
+) -> YkadaResult<GeneratedWallet> {
     let seed = match seed {
         Some(s) => s,
         None => SeedPhrase::generate()?,
     };
-
-    let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0")?;
-    let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0")?;
-
-    let payment_sk = derive_signing_key(&seed, &payment_path)?;
-    let payment_vk = payment_sk.verifying_key();
-    debug!(
-        "Payment private key: {}",
-        hex::encode(payment_sk.as_bytes())
-    );
-    debug!(
-        "Payment verifying key: {}",
-        hex::encode(payment_vk.as_bytes())
-    );
-
-    let stake_sk = derive_signing_key(&seed, &stake_path)?;
-    let stake_vk = stake_sk.verifying_key();
-    debug!("Stake private key: {}", hex::encode(stake_sk.as_bytes()));
-    debug!("Stake verifying key: {}", hex::encode(stake_vk.as_bytes()));
-
-    info!(
-        "Payment verifying key:   {}",
-        payment_vk
-            .to_bech32()
-            .unwrap_or_else(|_| hex::encode(payment_vk.as_bytes()))
-    );
-    info!(
-        "Stake verifying key:     {}",
-        StakeVerifyingKey(stake_vk)
-            .to_bech32()
-            .unwrap_or_else(|_| hex::encode(stake_vk.as_bytes()))
-    );
-
-    let address = derive_cardano_address(&payment_vk, &stake_vk, config.network);
-    debug!(
-        "Derived address: {}",
-        address
-            .to_bech32()
-            .unwrap_or_else(|_| hex::encode(address.to_bytes()))
-    );
-
-    let mut device = finder.find_first()?;
-    check_firmware_version(device.firmware_version())?;
-    device.authenticate(mgmt_key)?;
-
-    let payment_config = KeyConfig {
-        slot: config.payment_slot,
-        pin_policy: config.pin_policy,
-        touch_policy: config.touch_policy,
-    };
-    let stake_config = KeyConfig {
-        slot: config.stake_slot,
-        pin_policy: config.pin_policy,
-        touch_policy: config.touch_policy,
-    };
-
-    device.import_key(payment_sk, payment_vk, payment_config)?;
-    device.import_key(stake_sk, stake_vk, stake_config)?;
-
-    info!(
-        "Wallet generated: address={}",
-        address
-            .to_bech32()
-            .unwrap_or_else(|_| hex::encode(address.to_bytes()))
-    );
-
-    Ok(GeneratedWallet {
-        mnemonic: seed,
+    let WalletKeys {
+        payment_sk,
+        stake_sk,
         payment_vk,
         stake_vk,
         address,
+    } = derive_wallet_keys(&seed, config.network);
+
+    let mut device = finder.find_first()?;
+    check_firmware_version(device.firmware_version())?;
+    refuse_overwrite(&mut device, config.overwrite)?;
+    device.authenticate(mgmt_key)?;
+
+    let key_config = |slot| KeyConfig {
+        slot,
+        pin_policy: config.pin_policy,
+        touch_policy: config.touch_policy,
+    };
+    device.import_key(payment_sk, payment_vk, key_config(PAYMENT_SLOT))?;
+    device.import_key(stake_sk, stake_vk, key_config(STAKE_SLOT))?;
+
+    Ok(GeneratedWallet {
+        mnemonic: seed,
+        address,
     })
+}
+
+// Never silently replace a wallet whose mnemonic may be the only way to its funds.
+fn refuse_overwrite<D: DeviceReader>(device: &mut D, overwrite: Overwrite) -> YkadaResult<()> {
+    match overwrite {
+        Overwrite::Allow => Ok(()),
+        Overwrite::Refuse => match (
+            device.read_public_key(PAYMENT_SLOT)?,
+            device.read_public_key(STAKE_SLOT)?,
+        ) {
+            (None, None) => Ok(()),
+            _ => Err(YkadaError::WalletState(
+                "this YubiKey already holds a wallet; pass --force to overwrite it".into(),
+            )),
+        },
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::adapters::fake_yubikey::{FakeDeviceFinder, FakeYubiKey};
-    use crate::logic::Bech32Encodable;
-    use crate::model::{ManagementKey, Network, Pin};
-    use crate::YkadaError;
+    use crate::model::{Network, PinPolicy, TouchPolicy};
+    use crate::test_vectors::{KNOWN_ADDRESS_MAINNET, KNOWN_PHRASE};
+    use ed25519_dalek::SigningKey;
 
-    const TEST_PHRASE: &str =
-        "test walk nut penalty hip pave soap entry language right filter choice";
-
-    fn make_finder() -> FakeDeviceFinder {
-        FakeDeviceFinder {
-            device: Some(FakeYubiKey::new(Pin::default())),
-        }
-    }
-
-    fn make_mgmt_key() -> ManagementKey {
-        ManagementKey::new([
-            1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 9,
-        ])
-    }
-
-    #[test]
-    fn test_happy_path_keys_derived_and_returned() {
-        let finder = make_finder();
-        let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
-        let config = WalletConfig::default();
-        let mgmt_key = make_mgmt_key();
-
-        let result = generate_wallet_use_case(&finder, Some(seed), config, Some(&mgmt_key));
-
-        assert!(result.is_ok(), "error: {:?}", result.err());
-        let wallet = result.unwrap();
-        assert_eq!(wallet.payment_vk.as_bytes().len(), 32);
-        assert_eq!(wallet.stake_vk.as_bytes().len(), 32);
-        assert_ne!(
-            wallet.payment_vk.as_bytes(),
-            wallet.stake_vk.as_bytes(),
-            "payment and stake keys must differ"
-        );
-        assert_eq!(wallet.mnemonic.phrase(), TEST_PHRASE);
-    }
-
-    #[test]
-    fn test_address_testnet_prefix() {
-        let finder = make_finder();
-        let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
+    fn import(
+        device: FakeYubiKey,
+        overwrite: Overwrite,
+        mgmt_key: &ManagementKey,
+    ) -> YkadaResult<GeneratedWallet> {
         let config = WalletConfig {
-            network: Network::Preview,
-            ..WalletConfig::default()
+            pin_policy: PinPolicy::Always,
+            touch_policy: TouchPolicy::Always,
+            network: Network::Mainnet,
+            overwrite,
         };
-        let mgmt_key = make_mgmt_key();
+        let seed = SeedPhrase::try_from(KNOWN_PHRASE).unwrap();
+        generate_wallet_use_case(
+            &FakeDeviceFinder(device),
+            Some(seed),
+            config,
+            Some(mgmt_key),
+        )
+    }
 
-        let wallet =
-            generate_wallet_use_case(&finder, Some(seed), config, Some(&mgmt_key)).unwrap();
-        let encoded = wallet.address.to_bech32().unwrap();
-        assert!(encoded.starts_with("addr_test1"), "got: {}", encoded);
+    fn provisioned_device() -> FakeYubiKey {
+        FakeYubiKey::empty().with_key(STAKE_SLOT, SigningKey::from_bytes(&[3; 32]))
     }
 
     #[test]
-    fn test_not_found_when_no_device() {
-        let finder = FakeDeviceFinder { device: None };
-        let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
-        let config = WalletConfig::default();
-
-        let result = generate_wallet_use_case(&finder, Some(seed), config, None);
-
-        assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), YkadaError::NotFound));
+    fn test_import_returns_known_address() {
+        let wallet = import(
+            FakeYubiKey::empty(),
+            Overwrite::Refuse,
+            &FakeYubiKey::MGMT_KEY,
+        )
+        .unwrap();
+        assert_eq!(wallet.address.to_bech32().unwrap(), KNOWN_ADDRESS_MAINNET);
+        assert_eq!(wallet.mnemonic.phrase(), KNOWN_PHRASE);
     }
 
     #[test]
-    fn test_authentication_failed_wrong_mgmt_key() {
-        let finder = make_finder();
-        let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
-        let config = WalletConfig::default();
-        let wrong_key = ManagementKey::new([1u8; 24]);
+    fn test_refuses_to_overwrite_existing_wallet() {
+        let err = import(
+            provisioned_device(),
+            Overwrite::Refuse,
+            &FakeYubiKey::MGMT_KEY,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("--force"), "got: {err}");
+    }
 
-        let result = generate_wallet_use_case(&finder, Some(seed), config, Some(&wrong_key));
+    #[test]
+    fn test_overwrite_allowed_with_force() {
+        let wallet = import(
+            provisioned_device(),
+            Overwrite::Allow,
+            &FakeYubiKey::MGMT_KEY,
+        );
+        assert!(wallet.is_ok(), "error: {:?}", wallet.err());
+    }
 
-        assert!(result.is_err());
+    #[test]
+    fn test_wrong_mgmt_key_is_rejected() {
+        let wrong_key = ManagementKey::new([1; 24]);
         assert!(matches!(
-            result.unwrap_err(),
+            import(FakeYubiKey::empty(), Overwrite::Refuse, &wrong_key).unwrap_err(),
             YkadaError::AuthenticationFailed { .. }
         ));
     }
