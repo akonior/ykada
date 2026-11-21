@@ -266,4 +266,54 @@ mod tests {
         let msg = build_error(&[10_000_000], u64::MAX);
         assert!(msg.contains("overflows"), "got: {msg}");
     }
+
+    use crate::use_cases::decode_tx::summarize_cbor;
+    use proptest::prelude::*;
+
+    // A fixed key, not a mnemonic: deriving from a mnemonic is slow by design.
+    fn build_with(utxos: &[u64], send_lovelace: u64, fee_lovelace: u64) -> YkadaResult<Vec<u8>> {
+        let key = ed25519_dalek::SigningKey::from_bytes(&[7; 32]).verifying_key();
+        let chain = FakeChain::new(utxos);
+        let params = TransactionParams {
+            recipient: Address::from_bech32(RECIPIENT).unwrap(),
+            send_lovelace,
+            fee_lovelace,
+            change_address: crate::logic::derive_cardano_address(&key, &key, Network::Preview),
+        };
+        check_amounts(send_lovelace, fee_lovelace)
+            .and_then(|()| build_transaction_use_case(&chain, &chain, params))
+    }
+
+    proptest! {
+        // Whatever the wallet holds and is asked to send: a clear error, or a transaction in
+        // which the inputs pay exactly the outputs plus the fee, every output holds at least
+        // 1 ADA, the payment is the amount asked for, and the fee is one a node accepts.
+        #[test]
+        fn prop_a_built_transaction_balances(
+            utxos in prop::collection::vec(1u64..100_000_000, 1..40),
+            send in 0u64..300_000_000,
+            fee in 0u64..1_200_000,
+        ) {
+            let Ok(cbor) = build_with(&utxos, send, fee) else {
+                return Ok(());
+            };
+            // FakeChain gives UTxO n (counting from 1) the tx hash [n; 32].
+            let spent: u64 = body(&cbor)
+                .inputs
+                .iter()
+                .map(|input| utxos[usize::from(input.transaction_id[0]) - 1])
+                .sum();
+            let outputs: Vec<u64> = summarize_cbor(&cbor)
+                .unwrap()
+                .outputs
+                .iter()
+                .map(|o| o.lovelace)
+                .collect();
+            prop_assert_eq!(spent, outputs.iter().sum::<u64>() + fee);
+            prop_assert_eq!(outputs[0], send);
+            prop_assert!(outputs.iter().all(|&lovelace| lovelace >= MIN_UTXO_LOVELACE));
+            let size = signed_size(&cbor).unwrap() as u64;
+            prop_assert!(fee >= MIN_FEE_A * size + MIN_FEE_B && fee <= MAX_FEE_LOVELACE);
+        }
+    }
 }

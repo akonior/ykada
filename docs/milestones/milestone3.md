@@ -66,11 +66,14 @@ signed transaction can be verified independently of the device and the network.
 
 ## Tests
 
-`cargo test --lib --bins` runs the hardware-free tests on every push and pull request. They cover
+`cargo test --all-targets` runs the hardware-free tests on every push and pull request. They cover
 body hashing (checked against a transaction confirmed on Preview), signing and witness handling
-(body bytes preserved, re-signing is idempotent, a wrong key or PIN is rejected), what each `send`
-and `sign-tx` mode submits, coin selection, fees/change/min-UTxO, overflow checks, address
-derivation against known vectors, and recipient network checks.
+(body bytes and the other witness fields preserved, re-signing is idempotent, a wrong key or PIN
+is rejected), what each `send` and `sign-tx` mode submits, coin selection, fees/change/min-UTxO,
+overflow checks, address derivation against known vectors, and recipient network checks.
+Property tests feed random and corrupted input to every parser and check that built
+transactions balance and signatures never survive a changed body; CLI tests run the binary
+itself. See [testing](../testing.md).
 `scripts/integration_test.py` runs the full CLI against a real YubiKey. The `--live` flag also
 submits a transaction and waits for confirmation.
 

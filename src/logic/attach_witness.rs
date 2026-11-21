@@ -275,4 +275,46 @@ mod tests {
     fn test_truncated_input_is_an_error() {
         assert!(attach_witness(&[0x84, 0xa0], &witness(1)).is_err());
     }
+
+    use proptest::prelude::*;
+    use std::collections::BTreeMap;
+
+    // A witness set of other fields (keys 1..=7), each a one-item array, plain or tagged.
+    fn other_fields() -> impl Strategy<Value = BTreeMap<u8, Vec<u8>>> {
+        prop::collection::btree_map(
+            1u8..=7,
+            (prop::collection::vec(any::<u8>(), 0..24), any::<bool>()),
+            0..5,
+        )
+        .prop_map(|fields| {
+            fields
+                .into_iter()
+                .map(|(key, (bytes, tagged))| {
+                    let item = encode(|e| e.bytes(&bytes).map(|_| ())).unwrap();
+                    let array = [vec![0x81], item].concat();
+                    let value = match tagged {
+                        true => [TAG_258.to_vec(), array].concat(),
+                        false => array,
+                    };
+                    (key, [vec![key], value].concat())
+                })
+                .collect()
+        })
+    }
+
+    proptest! {
+        // Every other witness field comes out byte for byte, and attaching twice is the
+        // same as attaching once.
+        #[test]
+        fn prop_other_fields_keep_their_bytes(fields in other_fields(), seed in any::<u8>()) {
+            let header = encode(|e| e.map(fields.len() as u64).map(|_| ())).unwrap();
+            let witness_set = [header, fields.values().flatten().copied().collect()].concat();
+            let once = attach_witness(&tx(&witness_set), &witness(seed)).unwrap();
+            let after = witness_set_of(&once);
+            fields.values().for_each(|field| {
+                assert!(after.windows(field.len()).any(|w| w == field.as_slice()), "lost {field:02x?}");
+            });
+            prop_assert_eq!(attach_witness(&once, &witness(seed)).unwrap(), once);
+        }
+    }
 }

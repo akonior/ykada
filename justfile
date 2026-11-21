@@ -11,9 +11,9 @@ build:
 install:
     cargo install --path . --locked --force
 
-# Unit tests, script tests, fmt and clippy — exactly what CI runs (no YubiKey needed).
+# Unit, property, CLI and script tests, fmt and clippy — exactly what CI runs (no YubiKey needed).
 check:
-    cargo test --lib --bins --locked
+    cargo test --all-targets --locked
     python3 -m unittest discover -s scripts
     cargo fmt --check
     cargo clippy --all-targets --all-features --locked -- --deny warnings

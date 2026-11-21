@@ -31,8 +31,8 @@ jobs:
       - name: Build binaries
         run: cargo build --bins --locked
 
-      - name: Run unit tests (lib + bins)
-        run: cargo test --lib --bins --locked --verbose
+      - name: Run unit, property and CLI tests
+        run: cargo test --all-targets --locked --verbose
 
       - name: Run script tests (integration test reset guard)
         run: python3 -m unittest discover -s scripts -v

@@ -15,7 +15,7 @@ From a clone, the [`justfile`](../justfile) has the common tasks:
 ```sh
 just build     # release binary in target/release/ykada
 just install   # install this version as ykada in ~/.cargo/bin
-just check     # unit and script tests, fmt and clippy: exactly what CI runs
+just check     # unit, property, CLI and script tests, fmt and clippy: exactly what CI runs
 just itest     # end-to-end test on a real YubiKey (see below)
 ```
 
@@ -29,11 +29,14 @@ just itest     # end-to-end test on a real YubiKey (see below)
 | `src/adapters` | The YubiKey (PIV) and Koios implementations, and fakes for tests |
 | `src/use_cases` | Wallet creation, building, signing and decoding transactions |
 | `src/bin/ykada.rs` | The command-line interface |
+| `tests/cli.rs` | Tests that run the `ykada` binary, without a YubiKey |
 
 ## Tests
 
-`just check` runs the unit tests and the tests of `scripts/`, without a YubiKey or the network.
-GitHub Actions runs them on every push and pull request.
+`just check` runs the unit, property and CLI tests and the tests of `scripts/`, without a
+YubiKey or the network. GitHub Actions runs them on every push and pull request.
+[Testing](testing.md) describes each layer, the rules for new code and the checks to run by
+hand before a release.
 
 `just itest` runs the whole CLI against a real YubiKey 5 with firmware 5.7 or later. Connect
 only that one YubiKey.

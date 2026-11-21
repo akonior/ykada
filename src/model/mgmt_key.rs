@@ -114,4 +114,19 @@ mod tests {
         let debug_str = format!("{:?}", ManagementKey::new(vec![7u8; 24]).unwrap());
         assert!(debug_str.contains("REDACTED"));
     }
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn prop_any_text_is_answered(text in "\\PC*") {
+            let _ = ManagementKey::try_from(text);
+        }
+
+        #[test]
+        fn prop_only_piv_key_lengths_are_accepted(bytes in prop::collection::vec(any::<u8>(), 0..40)) {
+            let parsed = ManagementKey::try_from(hex::encode(&bytes));
+            prop_assert_eq!(parsed.is_ok(), ManagementKey::VALID_LENGTHS.contains(&bytes.len()));
+        }
+    }
 }

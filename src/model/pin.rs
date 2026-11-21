@@ -89,4 +89,14 @@ mod tests {
         assert!(debug_str.contains("REDACTED"));
         assert!(!debug_str.contains("123456"));
     }
+
+    use proptest::prelude::*;
+
+    proptest! {
+        // The PIV limit is on bytes: 6 to 8, whatever the characters.
+        #[test]
+        fn prop_a_pin_is_6_to_8_bytes(text in "\\PC{0,12}") {
+            prop_assert_eq!(Pin::from_str(&text).is_ok(), (6..=8).contains(&text.len()));
+        }
+    }
 }

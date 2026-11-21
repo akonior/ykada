@@ -176,4 +176,50 @@ mod tests {
         let upper = format!("  {}\n", RECIPIENT.to_uppercase());
         assert!(parse_recipient(&upper, Network::Preview).is_ok());
     }
+
+    use proptest::prelude::*;
+
+    fn any_key() -> impl Strategy<Value = VerifyingKey> {
+        any::<[u8; 32]>().prop_map(|seed| SigningKey::from_bytes(&seed).verifying_key())
+    }
+
+    proptest! {
+        // Whatever is typed, the answer is an address or an error, never a panic.
+        #[test]
+        fn prop_any_text_is_answered(text in "\\PC*") {
+            let _ = parse_recipient(&text, Network::Preview);
+        }
+
+        // Only the address's own encoding passes: the right prefix, no extra bytes, any case.
+        #[test]
+        fn prop_only_the_exact_encoding_is_accepted(
+            payment in any_key(),
+            stake in any_key(),
+            mainnet in any::<bool>(),
+            prefix in prop::sample::select(vec!["addr", "addr_test", "stake", "stake_test", "foo"]),
+            extra in prop::collection::vec(any::<u8>(), 0..6),
+            upper in any::<bool>(),
+        ) {
+            let (network, own_prefix) = match mainnet {
+                true => (Network::Mainnet, "addr"),
+                false => (Network::Preview, "addr_test"),
+            };
+            let address = derive_cardano_address(&payment, &stake, network).to_bech32().unwrap();
+            let text = reencoded(&address, prefix, &extra);
+            let typed = match upper {
+                true => text.to_uppercase(),
+                false => text,
+            };
+            let exact = prefix == own_prefix && extra.is_empty();
+            prop_assert_eq!(parse_recipient(&typed, network).is_ok(), exact);
+        }
+
+        #[test]
+        fn prop_an_address_is_refused_on_the_other_network(payment in any_key(), stake in any_key()) {
+            let address = |network| derive_cardano_address(&payment, &stake, network).to_bech32().unwrap();
+            prop_assert!(parse_recipient(&address(Network::Mainnet), Network::Preview).is_err());
+            prop_assert!(parse_recipient(&address(Network::Preprod), Network::Mainnet).is_err());
+            prop_assert!(parse_recipient(&address(Network::Preprod), Network::Preview).is_ok());
+        }
+    }
 }

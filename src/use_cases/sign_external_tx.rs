@@ -539,4 +539,69 @@ pub(crate) mod tests {
             Err(YkadaError::WalletState(_))
         ));
     }
+
+    use proptest::prelude::*;
+    use proptest::sample::Index;
+
+    fn signed_sample() -> Vec<u8> {
+        sign_with(42, &sample_unsigned_tx(0xAA, 2_000_000))
+    }
+
+    proptest! {
+        // Any input gets a summary or an error, never a panic.
+        #[test]
+        fn prop_any_text_is_answered(text in "\\PC*") {
+            let _ = summarize_tx(&text);
+        }
+
+        #[test]
+        fn prop_any_bytes_are_answered(bytes in prop::collection::vec(any::<u8>(), 0..512)) {
+            let _ = summarize_cbor(&bytes);
+            let _ = signed_size(&bytes);
+        }
+
+        // One corrupted byte anywhere in a real transaction: still no panic.
+        #[test]
+        fn prop_a_corrupted_transaction_is_answered(position in any::<Index>(), byte in any::<u8>()) {
+            let mut tx = signed_sample();
+            let i = position.index(tx.len());
+            tx[i] = byte;
+            let _ = summarize_cbor(&tx);
+            let _ = signed_size(&tx);
+        }
+
+        // A signature never survives a change to the body it signed.
+        #[test]
+        fn prop_a_changed_body_is_never_verified(position in any::<Index>(), byte in any::<u8>()) {
+            let signed = signed_sample();
+            let body_length = decode_tx(&signed).unwrap().transaction_body.raw_cbor().len();
+            let i = 1 + position.index(body_length);
+            prop_assume!(signed[i] != byte);
+            let tampered = [&signed[..i], &[byte], &signed[i + 1..]].concat();
+            let verified = summarize_cbor(&tampered).map_or(0, |s| s.witnesses_verified);
+            prop_assert_eq!(verified, 0);
+        }
+
+        // Signing keeps the body, adds a witness that verifies, matches the size the fee
+        // check predicted, and signing again changes nothing.
+        #[test]
+        fn prop_signing_keeps_the_body_and_verifies(
+            seed in any::<u8>(),
+            input in any::<u8>(),
+            lovelace in 1_000_000u64..45_000_000_000_000_000,
+        ) {
+            let unsigned = sample_unsigned_tx(input, lovelace);
+            let signed = sign_with(seed, &unsigned);
+            let body = |tx: &[u8]| decode_tx(tx).unwrap().transaction_body.raw_cbor().to_vec();
+            prop_assert_eq!(body(&unsigned), body(&signed));
+            prop_assert_eq!(verified_witnesses(&signed), (1, 1));
+            prop_assert_eq!(signed_size(&unsigned).unwrap(), signed.len());
+            prop_assert_eq!(sign_with(seed, &signed), signed);
+        }
+
+        #[test]
+        fn prop_bytes_after_the_transaction_are_refused(extra in prop::collection::vec(any::<u8>(), 1..64)) {
+            prop_assert!(decode_tx(&[signed_sample(), extra].concat()).is_err());
+        }
+    }
 }

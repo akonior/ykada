@@ -152,4 +152,47 @@ mod tests {
                 .unwrap()
         );
     }
+
+    use proptest::prelude::*;
+
+    // The message shapes, digits removed: none of them can carry a word of the phrase.
+    fn is_template(msg: &str) -> bool {
+        let shape =
+            |text: &str| -> String { text.chars().filter(|c| !c.is_ascii_digit()).collect() };
+        [
+            "word 1 is not in the BIP39 English word list",
+            "it has 1 words; a mnemonic has 12, 15, 18, 21 or 24",
+            "the checksum doesn't match: a word is wrong, or two words are swapped",
+            "it is not a valid BIP39 mnemonic",
+        ]
+        .iter()
+        .any(|template| shape(template) == shape(msg))
+    }
+
+    fn word() -> impl Strategy<Value = String> {
+        prop::sample::select(Language::English.word_list().to_vec()).prop_map(str::to_owned)
+    }
+
+    proptest! {
+        // A wrong phrase, typo or not, never comes back in the error message.
+        #[test]
+        fn prop_errors_never_quote_the_phrase(
+            words in prop::collection::vec(word(), 1..30),
+            typo in "[a-z]{3,9}",
+            at in any::<prop::sample::Index>(),
+        ) {
+            let position = at.index(words.len());
+            let with_typo = [&words[..position], &[typo], &words[position + 1..]].concat();
+            [words.join(" "), with_typo.join(" ")].iter().for_each(|phrase| {
+                if let Err(e) = SeedPhrase::try_from(phrase.as_str()) {
+                    assert!(is_template(&e.to_string()), "message: {e}");
+                }
+            });
+        }
+
+        #[test]
+        fn prop_any_text_is_answered(text in "\\PC*") {
+            let _ = SeedPhrase::try_from(text.as_str());
+        }
+    }
 }
