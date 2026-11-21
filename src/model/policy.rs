@@ -9,10 +9,6 @@ pub enum PinPolicy {
 }
 
 impl PinPolicy {
-    pub fn recommended_cardano() -> Self {
-        Self::Always
-    }
-
     pub fn to_yubikey_pin_policy(self) -> yubikey::PinPolicy {
         match self {
             PinPolicy::Never => yubikey::PinPolicy::Never,
@@ -42,10 +38,6 @@ pub enum TouchPolicy {
 }
 
 impl TouchPolicy {
-    pub fn recommended_cardano() -> Self {
-        Self::Always
-    }
-
     pub fn to_yubikey_touch_policy(self) -> yubikey::TouchPolicy {
         match self {
             TouchPolicy::Never => yubikey::TouchPolicy::Never,
@@ -105,12 +97,6 @@ mod tests {
         let yubikey_policy = yubikey::TouchPolicy::Always;
         let policy = TouchPolicy::from_yubikey_touch_policy(yubikey_policy).unwrap();
         assert_eq!(policy, TouchPolicy::Always);
-    }
-
-    #[test]
-    fn test_recommended_policies() {
-        assert_eq!(PinPolicy::recommended_cardano(), PinPolicy::Always);
-        assert_eq!(TouchPolicy::recommended_cardano(), TouchPolicy::Always);
     }
 
     #[test]

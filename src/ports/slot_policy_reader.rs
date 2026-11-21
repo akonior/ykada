@@ -8,10 +8,9 @@ pub(crate) trait SlotPolicyReader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapters::fake_yubikey::{FakeDeviceFinder, FakeYubiKey};
+    use crate::adapters::fake_yubikey::FakeYubiKey;
     use crate::model::{ManagementKey, Pin};
     use crate::ports::{KeyConfig, KeyManager, ManagementKeyVerifier};
-    use crate::use_cases::{read_slot_policy_use_case, SlotPolicyParams};
 
     const TESTING_MANAGEMENT_KEY: ManagementKey = ManagementKey::new([
         1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 9,
@@ -35,16 +34,9 @@ mod tests {
             .import_key(signing_key, vk, config)
             .expect("import failed");
 
-        let finder = FakeDeviceFinder {
-            device: Some(device),
-        };
-        let (pin_policy, touch_policy) = read_slot_policy_use_case(
-            &finder,
-            SlotPolicyParams {
-                slot: Slot::Signature,
-            },
-        )
-        .expect("read_slot_policy failed");
+        let (pin_policy, touch_policy) = device
+            .read_slot_policy(Slot::Signature)
+            .expect("read_slot_policy failed");
 
         assert_eq!(pin_policy, PinPolicy::Always);
         assert_eq!(touch_policy, TouchPolicy::Always);
@@ -52,16 +44,10 @@ mod tests {
 
     #[test]
     fn test_read_slot_policy_returns_never_when_no_key_imported() {
-        let finder = FakeDeviceFinder {
-            device: Some(FakeYubiKey::new(Pin::default())),
-        };
-        let (pin_policy, touch_policy) = read_slot_policy_use_case(
-            &finder,
-            SlotPolicyParams {
-                slot: Slot::Signature,
-            },
-        )
-        .expect("read_slot_policy failed");
+        let mut device = FakeYubiKey::new(Pin::default());
+        let (pin_policy, touch_policy) = device
+            .read_slot_policy(Slot::Signature)
+            .expect("read_slot_policy failed");
 
         assert_eq!(pin_policy, PinPolicy::Never);
         assert_eq!(touch_policy, TouchPolicy::Never);

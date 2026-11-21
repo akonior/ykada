@@ -4,44 +4,11 @@ pub use crate::logic::{
     banner, decode_bech32_address, Bech32Encodable, Bech32Error, StakeVerifyingKey,
 };
 pub use crate::model::*;
-use crate::ports::KeyConfig;
+use crate::ports::{DeviceFinder, SlotPolicyReader};
 use crate::use_cases::{
-    fetch_balance_use_case, generate_key_use_case, generate_wallet_use_case,
-    import_private_key_from_seed_phrase_use_case, import_private_key_in_der_format_use_case,
-    read_slot_policy_use_case, send_ada_use_case, sign_tx_file_use_case, wallet_info_use_case,
-    SendAdaParams, SignTxFileParams, SlotPolicyParams,
+    fetch_balance_use_case, generate_wallet_use_case, send_ada_use_case, sign_tx_file_use_case,
+    wallet_info_use_case, SendAdaParams, SignTxFileParams,
 };
-use ed25519_dalek::VerifyingKey;
-
-pub fn generate_key() -> YkadaResult<VerifyingKey> {
-    generate_key_with_config(KeyConfig::default(), None)
-}
-
-pub fn generate_key_with_config(
-    config: KeyConfig,
-    mgmt_key: Option<&ManagementKey>,
-) -> YkadaResult<VerifyingKey> {
-    let finder = PivDeviceFinder;
-    generate_key_use_case(&finder, config, mgmt_key)
-}
-
-pub fn import_private_key_in_der_format(
-    der: DerPrivateKey,
-    config: KeyConfig,
-    mgmt_key: Option<&ManagementKey>,
-) -> YkadaResult<VerifyingKey> {
-    let finder = PivDeviceFinder;
-    import_private_key_in_der_format_use_case(&finder, der, config, mgmt_key)
-}
-
-pub fn import_wallet(
-    seed: SeedPhrase,
-    config: WalletConfig,
-    mgmt_key: Option<&ManagementKey>,
-) -> YkadaResult<GeneratedWallet> {
-    let finder = PivDeviceFinder;
-    generate_wallet_use_case(&finder, Some(seed), config, mgmt_key)
-}
 
 pub fn generate_or_import_wallet(
     seed: Option<SeedPhrase>,
@@ -122,24 +89,5 @@ pub fn sign_tx_file(
 }
 
 pub fn read_slot_policy(slot: Slot) -> YkadaResult<(PinPolicy, TouchPolicy)> {
-    let finder = PivDeviceFinder;
-    read_slot_policy_use_case(&finder, SlotPolicyParams { slot })
-}
-
-pub fn import_private_key_from_seed_phrase(
-    seed_phrase: &str,
-    passphrase: &str,
-    path: Option<&str>,
-    config: KeyConfig,
-    mgmt_key: Option<&ManagementKey>,
-) -> YkadaResult<VerifyingKey> {
-    let finder = PivDeviceFinder;
-    import_private_key_from_seed_phrase_use_case(
-        &finder,
-        seed_phrase,
-        passphrase,
-        path,
-        config,
-        mgmt_key,
-    )
+    PivDeviceFinder.find_first()?.read_slot_policy(slot)
 }

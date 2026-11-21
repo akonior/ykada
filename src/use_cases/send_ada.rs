@@ -68,7 +68,8 @@ where
         }
 
         SendMode::SignOnly => {
-            let payment_vkey = extract_payment_vkey(payment_vkey_opt)?;
+            let payment_vkey = payment_vkey_opt
+                .ok_or_else(|| YkadaError::NetworkError("no payment key on YubiKey".into()))?;
             let mut device = finder.find_first()?;
             sign_transaction_use_case(
                 utxo_fetcher,
@@ -80,7 +81,8 @@ where
         }
 
         SendMode::SignAndSubmit => {
-            let payment_vkey = extract_payment_vkey(payment_vkey_opt)?;
+            let payment_vkey = payment_vkey_opt
+                .ok_or_else(|| YkadaError::NetworkError("no payment key on YubiKey".into()))?;
             let mut device = finder.find_first()?;
             sign_and_submit_transaction_use_case(
                 utxo_fetcher,
@@ -92,10 +94,6 @@ where
             .map(SendOutcome::TxHash)
         }
     }
-}
-
-fn extract_payment_vkey(vkey_opt: Option<[u8; 32]>) -> YkadaResult<[u8; 32]> {
-    vkey_opt.ok_or_else(|| YkadaError::NetworkError("no payment key on YubiKey".into()))
 }
 
 fn into_sign_params(

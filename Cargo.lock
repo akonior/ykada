@@ -2591,7 +2591,6 @@ dependencies = [
  "pbkdf2 0.12.2",
  "pinentry",
  "predicates",
- "rand 0.9.2",
  "rand_core 0.9.3",
  "secrecy",
  "serde",

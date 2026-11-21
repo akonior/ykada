@@ -1,13 +1,11 @@
 use crate::error::{YkadaError, YkadaResult};
-use crate::model::{Algorithm, ManagementKey, Pin, PinPolicy, Slot, TouchPolicy};
+use crate::model::{ManagementKey, Pin, PinPolicy, Slot, TouchPolicy};
 use crate::ports::{
     DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
     SlotPolicyReader,
 };
 use crate::run_yubikey_contract_tests;
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use rand::rng;
-use rand::RngCore;
 use std::collections::HashMap;
 use tracing::{debug, info};
 
@@ -91,34 +89,10 @@ impl KeyManager for FakeYubiKey {
         info!("FakeYubiKey: key imported to slot {:?}", config.slot);
         Ok(())
     }
-
-    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<VerifyingKey> {
-        if !self.authenticated {
-            return Err(YkadaError::AuthenticationFailed {
-                reason: "Not authenticated".to_string(),
-            });
-        }
-
-        let mut secret_bytes = [0u8; 32];
-        rng().fill_bytes(&mut secret_bytes);
-        let signing_key = SigningKey::from_bytes(&secret_bytes);
-        let verifying_key = signing_key.verifying_key();
-
-        self.slot_policies
-            .insert(config.slot, (config.pin_policy, config.touch_policy));
-        self.keys.insert(config.slot, signing_key);
-        Ok(verifying_key)
-    }
 }
 
 impl Signer for FakeYubiKey {
-    fn sign(
-        &mut self,
-        data: &[u8],
-        slot: Slot,
-        _algorithm: Algorithm,
-        pin: Option<&Pin>,
-    ) -> YkadaResult<Vec<u8>> {
+    fn sign(&mut self, data: &[u8], slot: Slot, pin: Option<&Pin>) -> YkadaResult<Vec<u8>> {
         if let Some(pin) = pin {
             self.verify_pin(pin)?;
         }

@@ -1,5 +1,5 @@
 use crate::error::{YkadaError, YkadaResult};
-use crate::model::{Algorithm, Pin, Slot};
+use crate::model::{Pin, Slot};
 use crate::ports::Signer;
 
 pub(super) struct SignDataParams {
@@ -13,7 +13,7 @@ pub(super) fn sign_data_use_case<S: Signer>(
     params: SignDataParams,
 ) -> YkadaResult<[u8; 64]> {
     signer
-        .sign(data, params.slot, Algorithm::Ed25519, params.pin.as_ref())
+        .sign(data, params.slot, params.pin.as_ref())
         .and_then(|bytes| {
             bytes
                 .try_into()

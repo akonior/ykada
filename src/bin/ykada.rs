@@ -137,21 +137,6 @@ pub enum Commands {
     },
 }
 
-#[derive(clap::Args, Debug)]
-pub struct KeyOptions {
-    #[arg(long, default_value = "signature")]
-    pub slot: SlotArg,
-
-    #[arg(long, default_value = "always")]
-    pub pin_policy: PinPolicyArg,
-
-    #[arg(long, default_value = "always")]
-    pub touch_policy: TouchPolicyArg,
-
-    #[arg(long)]
-    pub mgmt_key: Option<String>,
-}
-
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum SlotArg {
     Authentication,
@@ -308,8 +293,12 @@ fn run(command: Commands) -> anyhow::Result<()> {
             };
             let mgmt_key_opt = mgmt_key.map(|s| s.try_into()).transpose()?;
             let seed_phrase = SeedPhrase::try_from(seed.as_str()).context("invalid seed phrase")?;
-            let wallet = ykada::import_wallet(seed_phrase, config, mgmt_key_opt.as_ref())
-                .context("failed to import wallet from seed phrase")?;
+            let wallet = ykada::api::generate_or_import_wallet(
+                Some(seed_phrase),
+                config,
+                mgmt_key_opt.as_ref(),
+            )
+            .context("failed to import wallet from seed phrase")?;
             println!("Cardano address:         {}", wallet.address.to_bech32()?);
         }
 

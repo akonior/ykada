@@ -13,8 +13,8 @@ impl Default for KeyConfig {
     fn default() -> Self {
         Self {
             slot: Slot::default_signing(),
-            pin_policy: PinPolicy::recommended_cardano(),
-            touch_policy: TouchPolicy::recommended_cardano(),
+            pin_policy: PinPolicy::Always,
+            touch_policy: TouchPolicy::Always,
         }
     }
 }
@@ -29,6 +29,4 @@ pub(crate) trait KeyManager {
         vk: VerifyingKey,
         config: KeyConfig,
     ) -> YkadaResult<()>;
-
-    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<VerifyingKey>;
 }

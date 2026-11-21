@@ -170,18 +170,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::Algorithm;
 
     struct FakeSigner;
 
     impl Signer for FakeSigner {
-        fn sign(
-            &mut self,
-            _data: &[u8],
-            _slot: Slot,
-            _algorithm: Algorithm,
-            _pin: Option<&Pin>,
-        ) -> YkadaResult<Vec<u8>> {
+        fn sign(&mut self, _data: &[u8], _slot: Slot, _pin: Option<&Pin>) -> YkadaResult<Vec<u8>> {
             Ok(vec![0u8; 64])
         }
     }
@@ -209,10 +202,10 @@ mod tests {
         .unwrap();
         let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
         let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
-        let payment_vk = derive_signing_key(&seed, "", &payment_path)
+        let payment_vk = derive_signing_key(&seed, &payment_path)
             .unwrap()
             .verifying_key();
-        let stake_vk = derive_signing_key(&seed, "", &stake_path)
+        let stake_vk = derive_signing_key(&seed, &stake_path)
             .unwrap()
             .verifying_key();
         let addr = derive_cardano_address(&payment_vk, &stake_vk, Network::Preview);
@@ -267,10 +260,10 @@ mod tests {
         .unwrap();
         let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
         let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
-        let payment_vk = derive_signing_key(&seed, "", &payment_path)
+        let payment_vk = derive_signing_key(&seed, &payment_path)
             .unwrap()
             .verifying_key();
-        let stake_vk = derive_signing_key(&seed, "", &stake_path)
+        let stake_vk = derive_signing_key(&seed, &stake_path)
             .unwrap()
             .verifying_key();
         let addr = Address::from_bytes(

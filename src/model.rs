@@ -1,10 +1,8 @@
 mod account_balance;
-mod algorithm;
 mod cardano_address;
 mod cardano_key;
 mod derivation_path;
 mod generated_wallet;
-mod key_material;
 mod mgmt_key;
 mod network;
 mod pin;
@@ -18,12 +16,10 @@ mod wallet_config;
 mod wallet_info;
 
 pub use account_balance::{AccountBalance, TokenBalance};
-pub use algorithm::{Algorithm, AlgorithmError};
 pub use cardano_address::CardanoAddress;
 pub use cardano_key::{CardanoKey, CardanoKeyError};
 pub use derivation_path::{DerivationPath, DerivationPathError};
 pub use generated_wallet::GeneratedWallet;
-pub use key_material::DerPrivateKey;
 pub use mgmt_key::{ManagementKey, ManagementKeyError};
 pub use network::Network;
 pub use pin::{Pin, PinError};

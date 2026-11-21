@@ -1,26 +1,3 @@
-#[macro_export]
-macro_rules! contract_tests_for {
-      (
-          $mod_name:ident,
-          make = $make:expr,
-          tests = {
-            $( $test_name:ident => $tmpl:path ),+ $(,)?
-        }
-      ) => {
-          mod $mod_name {
-              use super::*;
-
-              $(
-                  #[test]
-                  fn $test_name() {
-                      let op = ($make)();
-                      $tmpl(op);
-                  }
-              )+
-          }
-      };
-  }
-
 /// Generates a test module that runs all standard YubiKey contract tests against a device
 /// created by `$make`. Adding a new test to `yubikey_contract` automatically includes it
 /// in every caller without any changes at the call site.
@@ -70,14 +47,6 @@ macro_rules! run_yubikey_contract_tests {
                 yubikey_contract::test_sign_success(($make)());
             }
             #[test]
-            fn test_generate_key_not_authenticated() {
-                yubikey_contract::test_generate_key_not_authenticated(($make)());
-            }
-            #[test]
-            fn test_generate_key_success() {
-                yubikey_contract::test_generate_key_success(($make)());
-            }
-            #[test]
             fn test_import_seed_phrase_derived_key() {
                 yubikey_contract::test_import_seed_phrase_derived_key(($make)());
             }
@@ -92,7 +61,7 @@ pub mod yubikey_contract {
     use std::str::FromStr;
 
     use crate::{
-        model::{Algorithm, ManagementKey, Pin, Slot, TouchPolicy},
+        model::{ManagementKey, Pin, Slot, TouchPolicy},
         ports::{KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer},
         CardanoKey, DerivationPath, SeedPhrase, YkadaError,
     };
@@ -168,12 +137,7 @@ pub mod yubikey_contract {
 
     pub(crate) fn test_sign_key_not_found(mut device: impl Signer) {
         let empty_slot = Slot::Authentication;
-        let result = device.sign(
-            b"test data",
-            empty_slot,
-            Algorithm::default_cardano(),
-            Some(&Pin::default()),
-        );
+        let result = device.sign(b"test data", empty_slot, Some(&Pin::default()));
 
         match result.unwrap_err() {
             YkadaError::YubikeyLib(yubikey::Error::GenericError) => { /* ok */ }
@@ -185,7 +149,6 @@ pub mod yubikey_contract {
         let result = device.sign(
             b"test data",
             Slot::Signature,
-            Algorithm::default_cardano(),
             Some(&Pin::from_str("999999").unwrap()),
         );
 
@@ -213,12 +176,7 @@ pub mod yubikey_contract {
         assert!(result.is_ok(), "error: {:?}", result.err());
 
         let data = b"test data";
-        let result = device.sign(
-            data,
-            config.slot,
-            Algorithm::default_cardano(),
-            Some(&Pin::default()),
-        );
+        let result = device.sign(data, config.slot, Some(&Pin::default()));
 
         assert!(result.is_ok());
 
@@ -228,50 +186,6 @@ pub mod yubikey_contract {
             .map_err(|_| "Invalid signature length")
             .expect("Invalid signature length");
         let signature = ed25519_dalek::Signature::from_bytes(&sig_array);
-        verifying_key
-            .verify_strict(data, &signature)
-            .expect("Signature verification failed");
-    }
-
-    pub(crate) fn test_generate_key_not_authenticated(mut device: impl KeyManager) {
-        let config = KeyConfig::default();
-        let result = device.generate_key(config);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            YkadaError::AuthenticationFailed { .. }
-        ));
-    }
-
-    pub(crate) fn test_generate_key_success(
-        mut device: impl KeyManager + ManagementKeyVerifier + Signer,
-    ) {
-        device
-            .authenticate(Some(&TESTING_MANAGEMENT_KEY))
-            .expect("Authentication failed");
-
-        let config = KeyConfig {
-            touch_policy: TouchPolicy::Never,
-            ..Default::default()
-        };
-        let result = device.generate_key(config.clone());
-
-        assert!(result.is_ok(), "error: {:?}", result.err());
-        let verifying_key = result.unwrap();
-        assert_eq!(verifying_key.as_bytes().len(), 32);
-
-        let pin = Pin::default();
-        let data = b"test data";
-        let sign_result = device.sign(data, config.slot, Algorithm::default_cardano(), Some(&pin));
-
-        assert!(sign_result.is_ok(), "error: {:?}", sign_result.err());
-        let signature_bytes = sign_result.unwrap();
-        let sig_array: [u8; 64] = signature_bytes
-            .try_into()
-            .map_err(|_| "Invalid signature length")
-            .expect("Invalid signature length");
-        let signature = ed25519_dalek::Signature::from_bytes(&sig_array);
-
         verifying_key
             .verify_strict(data, &signature)
             .expect("Signature verification failed");

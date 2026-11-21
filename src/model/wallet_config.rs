@@ -14,8 +14,8 @@ impl Default for WalletConfig {
         Self {
             payment_slot: Slot::Signature,
             stake_slot: Slot::KeyManagement,
-            pin_policy: PinPolicy::recommended_cardano(),
-            touch_policy: TouchPolicy::recommended_cardano(),
+            pin_policy: PinPolicy::Always,
+            touch_policy: TouchPolicy::Always,
             network: Network::default(),
         }
     }

@@ -213,7 +213,7 @@ fn parse_tx_hash(hex_str: &str) -> YkadaResult<Hash<32>> {
 mod tests {
     use super::*;
     use crate::logic::{derive_cardano_address, derive_signing_key};
-    use crate::model::{Algorithm, DerivationPath, Network, SeedPhrase, TokenBalance};
+    use crate::model::{DerivationPath, Network, SeedPhrase, TokenBalance};
 
     const TEST_PHRASE: &str =
         "test walk nut penalty hip pave soap entry language right filter choice";
@@ -226,10 +226,10 @@ mod tests {
         let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
         let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
         let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
-        let payment_vk = derive_signing_key(&seed, "", &payment_path)
+        let payment_vk = derive_signing_key(&seed, &payment_path)
             .unwrap()
             .verifying_key();
-        let stake_vk = derive_signing_key(&seed, "", &stake_path)
+        let stake_vk = derive_signing_key(&seed, &stake_path)
             .unwrap()
             .verifying_key();
         derive_cardano_address(&payment_vk, &stake_vk, Network::Preview)
@@ -280,13 +280,7 @@ mod tests {
     struct FakeSigner;
 
     impl Signer for FakeSigner {
-        fn sign(
-            &mut self,
-            _data: &[u8],
-            _slot: Slot,
-            _algorithm: Algorithm,
-            _pin: Option<&Pin>,
-        ) -> YkadaResult<Vec<u8>> {
+        fn sign(&mut self, _data: &[u8], _slot: Slot, _pin: Option<&Pin>) -> YkadaResult<Vec<u8>> {
             Ok(vec![0u8; 64])
         }
     }
@@ -382,7 +376,7 @@ mod tests {
     fn test_sign_and_submit_returns_tx_hash() {
         let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
         let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
-        let payment_vk = crate::logic::derive_signing_key(&seed, "", &payment_path)
+        let payment_vk = crate::logic::derive_signing_key(&seed, &payment_path)
             .unwrap()
             .verifying_key();
         let payment_vkey: [u8; 32] = payment_vk.to_bytes();

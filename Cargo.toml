@@ -51,7 +51,6 @@ tracing-subscriber = { version = "0.3", optional = true }
 pinentry = { version = "0.5", optional = true }
 secrecy = { version = "0.8", optional = true }
 
-rand = "0.9"
 rand_core = "0.9"
 ureq = { version = "2", features = ["json"] }
 serde = { version = "1", features = ["derive"] }

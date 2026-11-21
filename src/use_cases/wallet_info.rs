@@ -54,7 +54,6 @@ where
     Ok(WalletInfo {
         serial,
         firmware,
-        network,
         payment_vk,
         stake_vk,
         address,
@@ -92,9 +91,9 @@ mod tests {
         let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
         let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
         let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
-        let payment_sk = derive_signing_key(&seed, "", &payment_path).unwrap();
+        let payment_sk = derive_signing_key(&seed, &payment_path).unwrap();
         let payment_vk = payment_sk.verifying_key();
-        let stake_sk = derive_signing_key(&seed, "", &stake_path).unwrap();
+        let stake_sk = derive_signing_key(&seed, &stake_path).unwrap();
         let stake_vk = stake_sk.verifying_key();
 
         let config = WalletConfig::default();
@@ -167,7 +166,7 @@ mod tests {
     fn test_info_with_one_key() {
         let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
         let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
-        let payment_sk = derive_signing_key(&seed, "", &payment_path).unwrap();
+        let payment_sk = derive_signing_key(&seed, &payment_path).unwrap();
         let payment_vk = payment_sk.verifying_key();
 
         let config = WalletConfig::default();
@@ -269,10 +268,10 @@ mod tests {
         let seed = SeedPhrase::try_from(TEST_PHRASE).unwrap();
         let payment_path = DerivationPath::try_from("m/1852'/1815'/0'/0/0").unwrap();
         let stake_path = DerivationPath::try_from("m/1852'/1815'/0'/2/0").unwrap();
-        let payment_vk = derive_signing_key(&seed, "", &payment_path)
+        let payment_vk = derive_signing_key(&seed, &payment_path)
             .unwrap()
             .verifying_key();
-        let stake_vk = derive_signing_key(&seed, "", &stake_path)
+        let stake_vk = derive_signing_key(&seed, &stake_path)
             .unwrap()
             .verifying_key();
         let expected_address = derive_cardano_address(&payment_vk, &stake_vk, Network::Preview)

@@ -1,5 +1,5 @@
 use crate::error::{YkadaError, YkadaResult};
-use crate::model::{Algorithm, ManagementKey, Pin, PinPolicy, Slot, TouchPolicy};
+use crate::model::{ManagementKey, Pin, PinPolicy, Slot, TouchPolicy};
 use crate::ports::{
     DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
     SlotPolicyReader,
@@ -7,7 +7,7 @@ use crate::ports::{
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use std::convert::TryInto;
 use tracing::{debug, info};
-use yubikey::piv::{generate, import_cv_key, sign_data};
+use yubikey::piv::{import_cv_key, sign_data, AlgorithmId};
 use yubikey::{Context, MgmKey, ObjectId, YubiKey};
 
 /// YubiKey data-object ID used to store the Cardano verifying key alongside an imported key.
@@ -105,10 +105,7 @@ impl KeyManager for PivYubiKey {
     ) -> YkadaResult<()> {
         self.ensure_authenticated()?;
 
-        let algorithm = Algorithm::default_cardano();
-
         debug!("Importing key to slot: {:?}", config.slot);
-        debug!("Algorithm: {:?}", algorithm);
         debug!(
             "Policies: PIN={:?}, Touch={:?}",
             config.pin_policy, config.touch_policy
@@ -119,7 +116,7 @@ impl KeyManager for PivYubiKey {
         import_cv_key(
             &mut self.device,
             config.slot.to_yubikey_slot_id(),
-            algorithm.to_yubikey_algorithm_id(),
+            AlgorithmId::Ed25519,
             key.as_bytes(),
             config.touch_policy.to_yubikey_touch_policy(),
             config.pin_policy.to_yubikey_pin_policy(),
@@ -134,61 +131,6 @@ impl KeyManager for PivYubiKey {
 
         info!("Key imported successfully to slot {:?}", config.slot);
         Ok(())
-    }
-
-    fn generate_key(&mut self, config: KeyConfig) -> YkadaResult<VerifyingKey> {
-        if !self.authenticated {
-            return Err(YkadaError::AuthenticationFailed {
-                reason: "Not authenticated".to_string(),
-            });
-        }
-
-        let slot_id = config.slot.to_yubikey_slot_id();
-        let algorithm_id = Algorithm::default_cardano().to_yubikey_algorithm_id();
-        let pin_policy = config.pin_policy.to_yubikey_pin_policy();
-        let touch_policy = config.touch_policy.to_yubikey_touch_policy();
-
-        debug!(
-            "Generating key in slot {:?} with algorithm {:?}",
-            slot_id, algorithm_id
-        );
-
-        let spki = generate(
-            &mut self.device,
-            slot_id,
-            algorithm_id,
-            pin_policy,
-            touch_policy,
-        )?;
-
-        info!("Key generated successfully in slot {:?}", slot_id);
-
-        let public_key_bytes = spki.subject_public_key.raw_bytes();
-
-        if public_key_bytes.len() != 32 {
-            return Err(YkadaError::InvalidKeyFormat {
-                format: format!(
-                    "Expected 32 bytes for Ed25519 public key, got {}",
-                    public_key_bytes.len()
-                ),
-            });
-        }
-
-        let public_key_array: [u8; 32] =
-            public_key_bytes[..32]
-                .try_into()
-                .map_err(|_| YkadaError::InvalidKeyFormat {
-                    format: "Failed to convert public key bytes to array".to_string(),
-                })?;
-
-        let verifying_key = VerifyingKey::from_bytes(&public_key_array)?;
-
-        // Store generated public key so read_public_key can retrieve it consistently.
-        let mut vk_bytes = *verifying_key.as_bytes();
-        self.device
-            .save_object(slot_to_vk_object_id(config.slot), &mut vk_bytes)?;
-
-        Ok(verifying_key)
     }
 }
 
@@ -237,29 +179,22 @@ impl SlotPolicyReader for PivYubiKey {
 }
 
 impl Signer for PivYubiKey {
-    fn sign(
-        &mut self,
-        data: &[u8],
-        slot: Slot,
-        algorithm: Algorithm,
-        pin: Option<&Pin>,
-    ) -> YkadaResult<Vec<u8>> {
+    fn sign(&mut self, data: &[u8], slot: Slot, pin: Option<&Pin>) -> YkadaResult<Vec<u8>> {
         if let Some(pin) = pin {
             self.verify_pin(pin)?;
         }
 
         debug!(
-            "Signing {} bytes with YubiKey: slot={:?} algorithm={:?} data={}",
+            "Signing {} bytes with YubiKey: slot={:?} data={}",
             data.len(),
             slot,
-            algorithm,
             hex::encode(data),
         );
 
         let signature = sign_data(
             &mut self.device,
             data,
-            algorithm.to_yubikey_algorithm_id(),
+            AlgorithmId::Ed25519,
             slot.to_yubikey_slot_id(),
         )?;
 

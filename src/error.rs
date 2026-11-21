@@ -10,9 +10,6 @@ pub enum YkadaError {
     #[error("Slot error: {0}")]
     Slot(#[from] crate::model::SlotError),
 
-    #[error("Algorithm error: {0}")]
-    Algorithm(#[from] crate::model::AlgorithmError),
-
     #[error("Policy error: {0}")]
     Policy(#[from] crate::model::PolicyError),
 
