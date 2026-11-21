@@ -72,7 +72,8 @@ cover what can be automated.
   PIN (one attempt, then the correct PIN), no touch, a slot with a key from another tool, a
   swapped public-key object.
 - **Network:** Koios unreachable or slow (`HTTPS_PROXY` to a dead proxy), a rejected submission,
-  two sends in a row.
+  no answer after the transaction was sent (the outcome must be reported as unknown, with the
+  transaction ID, never as "not submitted"), two sends in a row.
 - **Process:** a closed pipe (`ykada info | true`), `NO_COLOR=1`, `LANG=C`, non-UTF-8 arguments,
   `--only-sign | decode-tx` keeps stdout clean.
 - **Mainnet guard:** `send` and `sign-tx --send` on mainnet refuse without a typed `yes`, and

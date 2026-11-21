@@ -17,5 +17,5 @@ pub(crate) use pin_verifier::PinVerifier;
 pub(crate) use signer::Signer;
 pub(crate) use slot_policy_reader::SlotPolicyReader;
 pub(crate) use tip_fetcher::TipFetcher;
-pub(crate) use tx_submitter::TxSubmitter;
+pub(crate) use tx_submitter::{SubmitFailure, TxSubmitter};
 pub(crate) use utxo_fetcher::UtxoFetcher;

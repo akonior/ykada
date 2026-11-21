@@ -6,7 +6,7 @@ use pallas_primitives::{conway, NetworkId};
 use crate::error::{YkadaError, YkadaResult};
 use crate::logic::{address_network, attach_witness, map_keys, verify_signature};
 use crate::model::{Network, Pin, PreparedTx, SendMode, SendOutcome, TxHash, PAYMENT_SLOT};
-use crate::ports::{DeviceFinder, Signer, TxSubmitter};
+use crate::ports::{DeviceFinder, Signer, SubmitFailure, TxSubmitter};
 use crate::use_cases::decode_tx::{output_address, summarize_cbor, witness_verifies};
 use crate::use_cases::{wallet_keys, TxSummary};
 
@@ -148,12 +148,25 @@ where
         }
         SendMode::SignAndSubmit => {
             let signed = sign_tx(&mut finder.find_first()?, &tx.cbor, sign_params)?;
+            // The locally computed ID, not the API's echo; known before submitting, so a lost
+            // answer can still name the transaction to look for.
+            let tx_id = hex::encode(hash_tx_body(&signed)?);
             submitter
                 .submit_tx(&signed)
-                .map_err(|e| YkadaError::NotSubmitted(e.to_string()))?;
-            // Report the locally computed ID rather than trusting the API's echo.
-            hash_tx_body(&signed).map(|h| SendOutcome::TxHash(hex::encode(h)))
+                .map_err(|failure| submit_error(failure, &tx_id, tx.network))?;
+            Ok(SendOutcome::TxHash(tx_id))
         }
+    }
+}
+
+fn submit_error(failure: SubmitFailure, tx_id: &str, network: Network) -> YkadaError {
+    match failure {
+        SubmitFailure::NotSubmitted(reason) => YkadaError::NotSubmitted(reason),
+        SubmitFailure::OutcomeUnknown(reason) => YkadaError::SubmissionUnknown {
+            tx_id: tx_id.to_string(),
+            explorer: network.explorer_url(tx_id),
+            reason,
+        },
     }
 }
 
@@ -599,14 +612,15 @@ pub(crate) mod tests {
         assert_eq!(verified_witnesses(&sign_with(42, &stale)), (1, 1));
     }
 
-    #[test]
-    fn test_a_failed_submission_says_the_tx_was_not_submitted() {
-        struct Rejecting;
-        impl TxSubmitter for Rejecting {
-            fn submit_tx(&self, _: &[u8]) -> YkadaResult<()> {
-                Err(YkadaError::Network("HTTP 400: rejected".into()))
-            }
+    struct FailingSubmitter(fn() -> SubmitFailure);
+
+    impl TxSubmitter for FailingSubmitter {
+        fn submit_tx(&self, _: &[u8]) -> Result<(), SubmitFailure> {
+            Err((self.0)())
         }
+    }
+
+    fn submit_failure_message(submitter: FailingSubmitter) -> String {
         let finder = FakeDeviceFinder(device(42));
         let content = hex::encode(sample_unsigned_tx(0xAA, 2_000_000));
         let (tx, _) = prepare_external_tx_use_case(&finder, &content, Network::Preview).unwrap();
@@ -614,10 +628,36 @@ pub(crate) mod tests {
             mode: SendMode::SignAndSubmit,
             pin: None,
         };
-        let msg = finish_tx(&finder, &Rejecting, tx, params)
+        finish_tx(&finder, &submitter, tx, params)
             .unwrap_err()
-            .to_string();
+            .to_string()
+    }
+
+    #[test]
+    fn test_a_failed_submission_says_the_tx_was_not_submitted() {
+        let msg = submit_failure_message(FailingSubmitter(|| {
+            SubmitFailure::NotSubmitted("HTTP 400: rejected".into())
+        }));
         assert!(msg.contains("signed but not submitted"), "got: {msg}");
+    }
+
+    // After a timeout the payment may be on its way: say so, and name the transaction to look
+    // for, instead of inviting a second payment.
+    #[test]
+    fn test_an_unanswered_submission_names_the_tx_to_check() {
+        let msg = submit_failure_message(FailingSubmitter(|| {
+            SubmitFailure::OutcomeUnknown("timeout: receive response".into())
+        }));
+        let tx_id = hex::encode(hash_tx_body(&sample_unsigned_tx(0xAA, 2_000_000)).unwrap());
+        assert!(!msg.contains("not submitted"), "got: {msg}");
+        assert!(msg.contains("may still reach the chain"), "got: {msg}");
+        assert!(msg.contains("pay twice"), "got: {msg}");
+        assert!(
+            msg.contains(&format!(
+                "https://preview.cardanoscan.io/transaction/{tx_id}"
+            )),
+            "got: {msg}"
+        );
     }
 
     #[test]

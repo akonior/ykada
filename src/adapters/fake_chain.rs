@@ -1,6 +1,6 @@
 use crate::error::YkadaResult;
 use crate::model::Utxo;
-use crate::ports::{TipFetcher, TxSubmitter, UtxoFetcher};
+use crate::ports::{SubmitFailure, TipFetcher, TxSubmitter, UtxoFetcher};
 use std::cell::RefCell;
 
 // One ADA-only UTxO per entry; records every submitted transaction.
@@ -43,7 +43,7 @@ impl TipFetcher for FakeChain {
 }
 
 impl TxSubmitter for FakeChain {
-    fn submit_tx(&self, signed_tx_cbor: &[u8]) -> YkadaResult<()> {
+    fn submit_tx(&self, signed_tx_cbor: &[u8]) -> Result<(), SubmitFailure> {
         self.submitted.borrow_mut().push(signed_tx_cbor.to_vec());
         Ok(())
     }

@@ -72,6 +72,11 @@ ykada checks the address, the amounts and your funds before it asks for the PIN.
 then shows the amount and the fee in ADA and the recipient, and submits only after you type
 `yes`.
 
+When the transaction was sent but Koios gives no answer (a timeout, a dropped connection, a
+gateway error), it may still reach the chain. ykada says so and prints the transaction ID with
+an explorer link: look it up before you send again, or you may pay twice. "Signed but not
+submitted" means the transaction did not reach a node. The same holds when `sign-tx` submits.
+
 How the transaction is built:
 
 - It spends only UTxOs that hold ADA alone, largest first, and leaves tokens untouched.

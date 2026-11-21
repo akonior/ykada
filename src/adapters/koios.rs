@@ -4,7 +4,7 @@ use serde::{de::IgnoredAny, Deserialize, Serialize};
 
 use crate::error::{YkadaError, YkadaResult};
 use crate::model::{Network, Utxo};
-use crate::ports::{TipFetcher, TxSubmitter, UtxoFetcher};
+use crate::ports::{SubmitFailure, TipFetcher, TxSubmitter, UtxoFetcher};
 
 #[derive(Serialize)]
 struct AddressRequest<'a> {
@@ -108,19 +108,29 @@ impl TipFetcher for KoiosClient {
 
 // Koios spreads requests over several instances. One that has lost its node connection
 // answers TxCmdTxSubmitConnectionError before the tx reaches any node, so a retry is safe.
-// Timeouts are not retried: the tx may already have been submitted.
+// Nothing else is retried: after a timeout the tx may already be on its way.
 const SUBMIT_ATTEMPTS: usize = 3;
 const SUBMIT_RETRY_DELAY: Duration = Duration::from_secs(2);
 
+#[derive(Debug)]
 enum SubmitError {
-    NodeUnreachable(YkadaError),
-    Rejected(YkadaError),
+    // Koios answered that it reached no node: safe to try again.
+    NodeUnreachable(String),
+    // Koios or the node answered and refused the transaction.
+    Rejected(String),
+    // The request never left this machine: no address, no connection.
+    NotSent(String),
+    // The request was sent but no usable answer came back: a node may have taken it.
+    Unknown(String),
 }
 
-impl From<SubmitError> for YkadaError {
+impl From<SubmitError> for SubmitFailure {
     fn from(failure: SubmitError) -> Self {
         match failure {
-            SubmitError::NodeUnreachable(e) | SubmitError::Rejected(e) => e,
+            SubmitError::NodeUnreachable(reason)
+            | SubmitError::Rejected(reason)
+            | SubmitError::NotSent(reason) => SubmitFailure::NotSubmitted(reason),
+            SubmitError::Unknown(reason) => SubmitFailure::OutcomeUnknown(reason),
         }
     }
 }
@@ -140,10 +150,37 @@ fn classify_submit_failure(code: u16, body: String) -> SubmitError {
         }
         false => "",
     };
-    let error = YkadaError::Network(format!("{hint}HTTP {code}: {shown}"));
-    match body.contains("TxCmdTxSubmitConnectionError") {
-        true => SubmitError::NodeUnreachable(error),
-        false => SubmitError::Rejected(error),
+    let error = format!("{hint}HTTP {code}: {shown}");
+    // A gateway error (5xx) can come after the request was passed on to a node.
+    match (body.contains("TxCmdTxSubmitConnectionError"), code >= 500) {
+        (true, _) => SubmitError::NodeUnreachable(error),
+        (false, true) => SubmitError::Unknown(error),
+        (false, false) => SubmitError::Rejected(error),
+    }
+}
+
+// Failures before the request is written are safe; any later one leaves the outcome open.
+fn classify_transport_failure(error: ureq::Error) -> SubmitError {
+    let text = error.to_string();
+    let before_sending = match &error {
+        ureq::Error::HostNotFound
+        | ureq::Error::ConnectionFailed
+        | ureq::Error::BadUri(_)
+        | ureq::Error::InvalidProxyUrl
+        | ureq::Error::Timeout(ureq::Timeout::Resolve | ureq::Timeout::Connect) => true,
+        ureq::Error::Io(io) => matches!(
+            io.kind(),
+            std::io::ErrorKind::ConnectionRefused
+                | std::io::ErrorKind::NetworkUnreachable
+                | std::io::ErrorKind::HostUnreachable
+                | std::io::ErrorKind::AddrNotAvailable
+        ),
+        // ureq::Error is non-exhaustive: anything else may have happened after sending.
+        _ => false,
+    };
+    match before_sending {
+        true => SubmitError::NotSent(text),
+        false => SubmitError::Unknown(text),
     }
 }
 
@@ -174,7 +211,7 @@ impl KoiosClient {
             .http_status_as_error(false)
             .build()
             .send(signed_tx_cbor)
-            .map_err(|e| SubmitError::Rejected(YkadaError::Network(e.to_string())))?;
+            .map_err(classify_transport_failure)?;
         let status = response.status();
         match status.is_success() {
             true => Ok(()),
@@ -187,11 +224,11 @@ impl KoiosClient {
 }
 
 impl TxSubmitter for KoiosClient {
-    fn submit_tx(&self, signed_tx_cbor: &[u8]) -> YkadaResult<()> {
+    fn submit_tx(&self, signed_tx_cbor: &[u8]) -> Result<(), SubmitFailure> {
         submit_with_retry(SUBMIT_ATTEMPTS, SUBMIT_RETRY_DELAY, || {
             self.submit_once(signed_tx_cbor)
         })
-        .map_err(YkadaError::from)
+        .map_err(SubmitFailure::from)
     }
 }
 
@@ -233,7 +270,9 @@ mod tests {
     #[test]
     fn test_spent_inputs_are_explained() {
         let body = r#"{"contents":"ConwayMempoolFailure \"All inputs are spent. Transaction has probably already been included\""}"#;
-        let msg = YkadaError::from(classify_submit_failure(400, body.into())).to_string();
+        let SubmitError::Rejected(msg) = classify_submit_failure(400, body.into()) else {
+            panic!("expected a rejection");
+        };
         assert!(msg.contains("one you sent moments ago"), "got: {msg}");
         assert!(msg.contains("All inputs are spent"), "got: {msg}");
     }
@@ -318,6 +357,66 @@ mod tests {
 
         let rejected = client(serve_once(400, REJECTED_BODY)).submit_once(&[0x84]);
         assert!(matches!(rejected, Err(SubmitError::Rejected(e))
-            if e.to_string().contains("HTTP 400") && e.to_string().contains("TxCmdTxSubmitValidationError")));
+            if e.contains("HTTP 400") && e.contains("TxCmdTxSubmitValidationError")));
+    }
+
+    // A gateway error may come after the request reached a node: never call it not submitted.
+    #[test]
+    fn test_a_gateway_error_leaves_the_outcome_unknown() {
+        let failure = classify_submit_failure(504, "Gateway Timeout".into());
+        assert!(matches!(failure, SubmitError::Unknown(_)));
+        assert!(matches!(
+            SubmitFailure::from(failure),
+            SubmitFailure::OutcomeUnknown(_)
+        ));
+    }
+
+    #[test]
+    fn test_an_unknown_outcome_is_not_retried() {
+        let (result, calls) = run(vec![|| Err(SubmitError::Unknown("timeout".into()))]);
+        assert!(matches!(result, Err(SubmitError::Unknown(_))));
+        assert_eq!(calls, 1);
+    }
+
+    fn impatient_client(base_url: &'static str) -> KoiosClient {
+        KoiosClient {
+            base_url,
+            agent: ureq::Agent::new_with_config(
+                ureq::Agent::config_builder()
+                    .timeout_recv_response(Some(Duration::from_millis(300)))
+                    .build(),
+            ),
+        }
+    }
+
+    // Reads one request on localhost and never answers; returns its URL.
+    fn swallow_once() -> &'static str {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(&stream);
+            let length = request_content_length(&mut reader);
+            reader.read_exact(&mut vec![0; length]).unwrap();
+            std::thread::sleep(Duration::from_secs(3));
+        });
+        Box::leak(url.into_boxed_str())
+    }
+
+    // Koios got the transaction and said nothing: it may be on the chain, so "not submitted"
+    // would invite a second payment.
+    #[test]
+    fn test_no_answer_after_sending_is_an_unknown_outcome() {
+        let result = impatient_client(swallow_once()).submit_once(&[0x84]);
+        assert!(matches!(result, Err(SubmitError::Unknown(_))), "{result:?}");
+    }
+
+    #[test]
+    fn test_a_refused_connection_was_not_sent() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        drop(listener);
+        let result = impatient_client(Box::leak(url.into_boxed_str())).submit_once(&[0x84]);
+        assert!(matches!(result, Err(SubmitError::NotSent(_))), "{result:?}");
     }
 }

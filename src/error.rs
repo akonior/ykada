@@ -80,6 +80,17 @@ pub enum YkadaError {
     #[error("the transaction was signed but not submitted: {0}")]
     NotSubmitted(String),
 
+    #[error(
+        "the transaction was signed and sent, but no answer came back ({reason}), so it may \
+         still reach the chain. Check {explorer} (transaction {tx_id}) before you send it again, \
+         or you may pay twice"
+    )]
+    SubmissionUnknown {
+        tx_id: String,
+        explorer: String,
+        reason: String,
+    },
+
     #[error("Network error: {0}")]
     UreqError(Box<ureq::Error>),
 
