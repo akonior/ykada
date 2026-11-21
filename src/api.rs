@@ -10,7 +10,7 @@ use crate::use_cases::{
     finish_tx as finish_tx_use_case, generate_wallet_use_case, prepare_external_tx_use_case,
     prepare_payment_use_case, summarize_tx, wallet_info_use_case, FinishTxParams,
 };
-pub use crate::use_cases::{PaymentParams, TxOutputSummary, TxSummary};
+pub use crate::use_cases::{AssetAmount, PaymentParams, TxOutputSummary, TxSummary};
 use pallas_addresses::ShelleyAddress;
 
 // `seed: None` generates a fresh random mnemonic.

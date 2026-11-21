@@ -6,7 +6,7 @@ use secrecy::ExposeSecret;
 
 use ykada::{
     GeneratedWallet, ManagementKey, Network, Overwrite, PaymentParams, Pin, PinPolicy, SeedPhrase,
-    SendMode, SendOutcome, TouchPolicy, TxSummary, WalletConfig,
+    SendMode, SendOutcome, TouchPolicy, TxOutputSummary, TxSummary, WalletConfig,
 };
 
 #[derive(Parser)]
@@ -472,6 +472,21 @@ fn write_line(out: &mut impl Write, text: &str) -> anyhow::Result<()> {
         .context("failed to write to stdout")
 }
 
+fn print_output(out: &mut dyn Write, label: &str, o: &TxOutputSummary) -> std::io::Result<()> {
+    let attached: String = [(o.has_datum, " + datum"), (o.has_script, " + script")]
+        .iter()
+        .filter_map(|(present, label)| present.then_some(*label))
+        .collect();
+    writeln!(
+        out,
+        "{label}{} lovelace{attached} -> {}",
+        o.lovelace, o.address
+    )?;
+    o.tokens
+        .iter()
+        .try_for_each(|token| writeln!(out, "      + {token}"))
+}
+
 fn print_summary(out: &mut dyn Write, summary: &TxSummary) -> std::io::Result<()> {
     writeln!(out, "Transaction body hash: {}", summary.body_hash_hex)?;
     writeln!(out, "Inputs ({}):", summary.inputs.len())?;
@@ -480,18 +495,25 @@ fn print_summary(out: &mut dyn Write, summary: &TxSummary) -> std::io::Result<()
         .iter()
         .try_for_each(|input| writeln!(out, "  {input}"))?;
     writeln!(out, "Outputs ({}):", summary.outputs.len())?;
-    summary.outputs.iter().try_for_each(|o| {
-        let attached: String = [
-            (o.has_tokens, " + tokens"),
-            (o.has_datum, " + datum"),
-            (o.has_script, " + script"),
-        ]
+    summary
+        .outputs
         .iter()
-        .filter_map(|(present, label)| present.then_some(*label))
-        .collect();
-        writeln!(out, "  {} lovelace{attached} -> {}", o.lovelace, o.address)
-    })?;
+        .try_for_each(|o| print_output(out, "  ", o))?;
+    if let Some(returned) = &summary.collateral_return {
+        print_output(out, "Collateral return:     ", returned)?;
+    }
     writeln!(out, "Fee:                   {} lovelace", summary.fee)?;
+    if !summary.mint.is_empty() {
+        writeln!(
+            out,
+            "Minted, or burned if negative ({}):",
+            summary.mint.len()
+        )?;
+        summary
+            .mint
+            .iter()
+            .try_for_each(|asset| writeln!(out, "  {asset}"))?;
+    }
     if !summary.extras.is_empty() {
         writeln!(out, "Also contains:         {}", summary.extras.join(", "))?;
     }

@@ -7,7 +7,7 @@ use crate::error::{YkadaError, YkadaResult};
 use crate::logic::{address_network, attach_witness, map_keys, verify_signature};
 use crate::model::{Network, Pin, PreparedTx, SendMode, SendOutcome, TxHash, PAYMENT_SLOT};
 use crate::ports::{DeviceFinder, Signer, TxSubmitter};
-use crate::use_cases::decode_tx::{output_address, summarize_cbor};
+use crate::use_cases::decode_tx::{output_address, summarize_cbor, witness_verifies};
 use crate::use_cases::{wallet_keys, TxSummary};
 
 #[derive(serde::Deserialize)]
@@ -157,8 +157,8 @@ where
     }
 }
 
-// A testnet transaction can't pay a mainnet address (or the other way round), so the outputs
-// and the network_id field show which network a transaction is for.
+// A testnet transaction can't pay a mainnet address (or the other way round), so the outputs,
+// the collateral return and the network_id field show which network a transaction is for.
 fn check_network(tx: &conway::Tx<'_>, network: Network) -> YkadaResult<()> {
     let expected = address_network(network);
     let body = &tx.transaction_body;
@@ -169,11 +169,37 @@ fn check_network(tx: &conway::Tx<'_>, network: Network) -> YkadaResult<()> {
     let paid = body
         .outputs
         .iter()
+        .chain(body.collateral_return.as_ref())
         .filter_map(|o| Address::from_bytes(output_address(o)).ok()?.network());
     match declared.into_iter().chain(paid).find(|n| *n != expected) {
         None => Ok(()),
         Some(found) => Err(YkadaError::Tx(format!(
             "this transaction is for {found:?}, but --network is {network:?}"
+        ))),
+    }
+}
+
+// A signature that does not verify means the transaction changed after that signer signed it,
+// and a node rejects it. ykada's own earlier signature is replaced, so it may be stale.
+fn check_other_signatures(tx: &conway::Tx<'_>, ours: &[u8; 32]) -> YkadaResult<()> {
+    let hash = *body_hash(tx).as_bytes();
+    let witnesses = tx
+        .transaction_witness_set
+        .vkeywitness
+        .clone()
+        .map(|set| set.to_vec())
+        .unwrap_or_default();
+    let broken = witnesses
+        .iter()
+        .filter(|w| w.vkey.as_slice() != ours)
+        .find(|w| !witness_verifies(w, &hash));
+    match broken {
+        None => Ok(()),
+        Some(w) => Err(YkadaError::Tx(format!(
+            "the transaction carries a signature by key {} that does not verify: the transaction \
+             was changed after that signer signed it, and a node would reject it. Ask for a \
+             fresh copy",
+            hex::encode(w.vkey.as_slice())
         ))),
     }
 }
@@ -190,6 +216,7 @@ pub(crate) fn prepare_external_tx_use_case<F: DeviceFinder>(
     let (payment_vk, _) = wallet_keys(&mut finder.find_first()?)?.ok_or_else(|| {
         YkadaError::WalletState("no wallet on YubiKey — import or generate first".into())
     })?;
+    check_other_signatures(&decode_tx(&cbor)?, &payment_vk.to_bytes())?;
     let tx = PreparedTx {
         cbor,
         payment_vkey: payment_vk.to_bytes(),
@@ -484,6 +511,92 @@ pub(crate) mod tests {
         );
         let signed = sign_with(42, &unsigned);
         assert_eq!(signed_size(&signed).unwrap(), sign_with(43, &signed).len());
+    }
+
+    fn with_witness(tx_cbor: &[u8], signer: u8, signature: [u8; 64]) -> Vec<u8> {
+        let witness = conway::VKeyWitness {
+            vkey: key(signer).verifying_key().to_bytes().to_vec().into(),
+            signature: signature.to_vec().into(),
+        };
+        attach_witness(tx_cbor, &witness).unwrap()
+    }
+
+    fn prepared(device_seed: u8, tx_cbor: &[u8]) -> YkadaResult<(PreparedTx, TxSummary)> {
+        let finder = FakeDeviceFinder(device(device_seed));
+        prepare_external_tx_use_case(&finder, &hex::encode(tx_cbor), Network::Preview)
+    }
+
+    // Signing next to a broken signature yields a transaction no node accepts; say why first.
+    #[test]
+    fn test_an_invalid_signature_by_another_signer_is_refused_before_the_pin() {
+        let unsigned = sample_unsigned_tx(0xAA, 2_000_000);
+        let msg = prepared(42, &with_witness(&unsigned, 7, [0; 64]))
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(msg.contains("does not verify"), "got: {msg}");
+        assert!(
+            msg.contains(&hex::encode(key(7).verifying_key().to_bytes())),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_a_valid_signature_by_another_signer_is_kept() {
+        let cosigned = sign_with(7, &sample_unsigned_tx(0xAA, 2_000_000));
+        let finder = FakeDeviceFinder(device(42));
+        let (tx, _) = prepared(42, &cosigned).unwrap();
+        let params = FinishTxParams {
+            mode: SendMode::SignOnly,
+            pin: None,
+        };
+        let SendOutcome::Cbor(signed) =
+            finish_tx(&finder, &FakeChain::new(&[]), tx, params).unwrap()
+        else {
+            panic!("expected CBOR");
+        };
+        assert_eq!(verified_witnesses(&signed), (2, 2));
+    }
+
+    // A cosigner signed, then the fee changed: their signature is stale and a node would refuse.
+    #[test]
+    fn stale_cosigner_signature_is_refused_before_signing() {
+        use pallas_primitives::Fragment;
+        let signed = sign_with(1, &sample_unsigned_tx(1, 2_000_000));
+        let mut tx = decode_tx(&signed).unwrap();
+        tx.transaction_body.fee += 1;
+        let changed = tx.encode_fragment().unwrap();
+        assert_eq!(verified_witnesses(&changed), (0, 1));
+        assert!(
+            prepared(2, &changed).is_err(),
+            "accepted another signer's stale signature"
+        );
+    }
+
+    // Collateral returned to a mainnet address can't be what a Preview signer meant.
+    #[test]
+    fn collateral_return_must_match_the_selected_network() {
+        let change = crate::logic::derive_cardano_address(
+            &key(1).verifying_key(),
+            &key(2).verifying_key(),
+            Network::Mainnet,
+        );
+        let tx = paying(Address::from_bech32(RECIPIENT).unwrap())
+            .collateral_input(Input::new(Hash::new([3; 32]), 0))
+            .collateral_output(Output::new(Address::Shelley(change), 2_000_000));
+        let msg = prepare_error(tx, Network::Preview);
+        assert!(
+            msg.contains("for Mainnet, but --network is Preview"),
+            "got: {msg}"
+        );
+    }
+
+    // ykada's own stale signature is replaced when it signs again, so it is no reason to stop.
+    #[test]
+    fn test_its_own_stale_signature_is_replaced() {
+        let stale = with_witness(&sample_unsigned_tx(0xAA, 2_000_000), 42, [0; 64]);
+        assert!(prepared(42, &stale).is_ok());
+        assert_eq!(verified_witnesses(&sign_with(42, &stale)), (1, 1));
     }
 
     #[test]

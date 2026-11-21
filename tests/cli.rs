@@ -66,6 +66,37 @@ fn decode_tx_verifies_a_signed_transaction() {
     assert!(output.stderr.is_empty(), "stderr: {}", stderr(&output));
 }
 
+// If the scripts fail, the collateral's remainder goes to this address: it must be visible.
+#[test]
+fn decode_tx_shows_where_collateral_is_returned() {
+    use pallas_addresses::Address;
+    use pallas_crypto::hash::Hash;
+    use pallas_txbuilder::{BuildConway, Input, Output as TxOutput, StagingTransaction};
+    let return_address = Address::from_bytes(&[0x60; 29]).unwrap();
+    let return_text = return_address.to_bech32().unwrap();
+    let tx = StagingTransaction::new()
+        .input(Input::new(Hash::new([1; 32]), 0))
+        .output(TxOutput::new(
+            Address::from_bech32(TESTNET_ADDRESS).unwrap(),
+            2_000_000,
+        ))
+        .fee(200_000)
+        .collateral_input(Input::new(Hash::new([2; 32]), 0))
+        .collateral_output(TxOutput::new(return_address, 3_000_000))
+        .build_conway_raw()
+        .unwrap();
+    let result = ykada(&["decode-tx"], hex::encode(tx.tx_bytes.0).as_bytes());
+    assert!(result.status.success(), "{}", stderr(&result));
+    let summary = stdout(&result);
+    assert!(summary.contains(TESTNET_ADDRESS), "{summary}");
+    assert!(
+        summary.contains(&format!(
+            "Collateral return:     3000000 lovelace -> {return_text}"
+        )),
+        "missing collateral recipient {return_text}: {summary}"
+    );
+}
+
 #[test]
 fn decode_tx_reads_a_file_or_a_dash_for_stdin() {
     let path = temp_file("signed.hex", SIGNED_TX.as_bytes());
@@ -198,6 +229,43 @@ fn send_explains_amount_options() {
     assert_refused(&missing, 2, "--lovelace");
     let both = dry_run_send(&["--to", TESTNET_ADDRESS, "--ada", "1", "--lovelace", "1"]);
     assert_refused(&both, 2, "cannot be used with");
+}
+
+// A transaction paying a token and donating to the treasury: [body, {}, true, null].
+fn token_and_donation_tx() -> String {
+    use pallas_codec::minicbor::Encoder;
+    let address = bech32::decode(TESTNET_ADDRESS).unwrap().1;
+    let mut e = Encoder::new(Vec::new());
+    e.array(4).unwrap().map(4).unwrap();
+    e.u8(0).unwrap().array(1).unwrap().array(2).unwrap();
+    e.bytes(&[1; 32]).unwrap().u8(0).unwrap();
+    e.u8(1).unwrap().array(1).unwrap().array(2).unwrap();
+    e.bytes(&address)
+        .unwrap()
+        .array(2)
+        .unwrap()
+        .u64(2_000_000)
+        .unwrap();
+    e.map(1).unwrap().bytes(&[7; 28]).unwrap();
+    e.map(1).unwrap().bytes(b"MONEY").unwrap().u64(5).unwrap();
+    e.u8(2).unwrap().u64(200_000).unwrap();
+    e.u8(22).unwrap().u64(25_000_000).unwrap();
+    e.map(0).unwrap().bool(true).unwrap().null().unwrap();
+    hex::encode(e.into_writer())
+}
+
+// The YubiKey has no screen: every token and the donation must be spelled out, with amounts.
+#[test]
+fn decode_tx_spells_out_tokens_and_a_treasury_donation() {
+    let output = ykada(&["decode-tx"], token_and_donation_tx().as_bytes());
+    let out = stdout(&output);
+    assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+    let token = format!("      + 5 {}.4d4f4e4559 (\"MONEY\")", hex::encode([7; 28]));
+    assert!(out.contains(&token), "{out}");
+    assert!(
+        out.contains("treasury donation (25000000 lovelace)"),
+        "{out}"
+    );
 }
 
 // The testnet fixture is refused for mainnet before any device is used.

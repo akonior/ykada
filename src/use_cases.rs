@@ -7,7 +7,7 @@ mod wallet_info;
 
 pub(crate) use build_transaction::build_transaction_use_case;
 pub(crate) use decode_tx::summarize_tx;
-pub use decode_tx::{TxOutputSummary, TxSummary};
+pub use decode_tx::{AssetAmount, TxOutputSummary, TxSummary};
 pub(crate) use generate_wallet::generate_wallet_use_case;
 pub(crate) use send_ada::prepare_payment_use_case;
 pub use send_ada::PaymentParams;

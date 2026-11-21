@@ -99,17 +99,22 @@ ykada sign-tx --network mainnet --tx-file unsigned.json --send
 | `--tx-file FILE` | The transaction: a JSON export with a `cborHex` field, or bare CBOR hex (line breaks and a `0x` prefix are fine). Without it, or with `-`, ykada reads stdin. Input larger than 1 MiB, or with bytes after the transaction, is refused |
 | `--send` | Also submit the signed transaction and print its ID. Without it, ykada prints the signed CBOR hex |
 
-Before it asks for the PIN, `sign-tx` shows the inputs, the outputs (with any tokens, datum or
-script on them), the fee and the validity slots. It also lists everything beyond a plain payment:
-certificates, withdrawals and their amount, minting and burning, scripts, collateral and the
-collateral return, required signers, reference inputs, votes, governance proposals, treasury
-fields, metadata and a network ID, and warns when the transaction is marked invalid, which
-forfeits the collateral. Read them, because the YubiKey has no screen.
+Before it asks for the PIN, `sign-tx` shows the inputs, the outputs, the fee and the validity
+slots. Each output shows its ADA, any datum or script, and every token on it with its quantity,
+policy ID and asset name (hex, and as text when it is plain ASCII), the way `cardano-cli` writes
+them. Minted and burned tokens are listed the same way, one per line. It also lists everything
+else beyond a plain payment: certificates, withdrawals and their amount, scripts, collateral, the
+collateral return with its address and tokens, required signers, reference inputs, votes,
+governance proposals, a treasury donation and the treasury value with their amounts, metadata and
+a network ID, and warns when the transaction is marked invalid, which forfeits the collateral.
+Read them, because the YubiKey has no screen.
 
-It adds the wallet's signature and changes nothing else: the body, the other witnesses and
-scripts keep their exact bytes, so the transaction ID, any other signatures and a fee computed
-for that size stay valid. Signing again replaces ykada's earlier signature. A transaction for
-another network than `--network`, by its outputs or its network ID, is refused. A mainnet
+It adds the wallet's signature and changes nothing else: the body, the other witnesses and scripts
+keep their exact bytes, so the transaction ID, any other signatures and a fee computed for that
+size stay valid. Signing again replaces ykada's earlier signature. A transaction that already
+carries another signer's signature that does not verify was changed after they signed it, and no
+node would accept it: ykada refuses it before the PIN. A transaction for another network than
+`--network`, by its outputs, its collateral return or its network ID, is refused. A mainnet
 `--send` asks you to type `yes`, so it needs `--tx-file` rather than stdin.
 
 ## decode-tx
