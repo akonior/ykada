@@ -26,7 +26,7 @@ impl CardanoKey {
     }
 
     // kL as an RFC-8032 seed, because that is all PIV can import. The device hashes it again,
-    // so the public key is clamp(SHA-512(kL))*G, not BIP32-Ed25519's kL*G (see the README).
+    // so the public key is clamp(SHA-512(kL))*G, not BIP32-Ed25519's kL*G (see docs/keys-and-addresses.md).
     pub fn private_key(&self) -> SigningKey {
         let extended_secret = self.0.extended_secret_key_bytes();
         let mut k_l = [0u8; 32];

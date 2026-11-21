@@ -124,7 +124,7 @@ const LOVELACE_PER_ADA: u64 = 1_000_000;
 
 // ykada's PIV key model gives different addresses than other wallets for the same mnemonic.
 const MNEMONIC_SCOPE_NOTE: &str = "Note: this mnemonic restores the wallet only with ykada. \
-Other Cardano wallets derive a different address from it (see README, \"Keys and addresses\").";
+Other Cardano wallets derive a different address from it (see https://github.com/akonior/ykada/blob/main/docs/keys-and-addresses.md).";
 
 fn run(command: Commands) -> anyhow::Result<()> {
     match command {

@@ -416,6 +416,10 @@ ykman piv info
 
 ## 7. Proof of Concept: ykada Tool
 
+> These steps use the milestone 1 proof of concept, tag `v0.1.0-milestone1.0`. Its `load-key`
+> and `sign` commands were replaced by `generate`, `import`, `send` and `sign-tx` in later
+> versions.
+
 The **ykada** tool demonstrates the complete workflow of importing an Ed25519 key into a YubiKey PIV slot and signing data using the Rust `yubikey` crate.
 
 **Complete workflow:**
