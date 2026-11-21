@@ -5,8 +5,10 @@ use crate::ports::{
     SlotPolicyReader,
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use yubikey::piv::{import_cv_key, sign_data, AlgorithmId, SlotAlgorithmId, SlotMetadata};
-use yubikey::{Context, MgmKey, ObjectId, YubiKey};
+use yubikey::piv::{
+    import_cv_key, sign_data, AlgorithmId, ManagementSlotId, SlotAlgorithmId, SlotId, SlotMetadata,
+};
+use yubikey::{Context, MgmAlgorithmId, MgmKey, ObjectId, YubiKey};
 
 // The verifying key is stored in the slot's PIV certificate data object.
 fn slot_to_vk_object_id(slot: Slot) -> ObjectId {
@@ -45,6 +47,51 @@ fn pick_device<T>(opened: Vec<Result<T, yubikey::Error>>) -> YkadaResult<T> {
     }
 }
 
+// The algorithm of the management key on the device (firmware 5.3+ reports it).
+fn management_key_algorithm(device: &mut YubiKey) -> Option<MgmAlgorithmId> {
+    let slot = SlotId::Management(ManagementSlotId::Management);
+    match yubikey::piv::metadata(device, slot).map(|metadata| metadata.algorithm) {
+        Ok(SlotAlgorithmId::Management(algorithm)) => Some(algorithm),
+        Ok(SlotAlgorithmId::Asymmetric(_) | SlotAlgorithmId::PinPuk) | Err(_) => None,
+    }
+}
+
+fn key_length(algorithm: MgmAlgorithmId) -> usize {
+    match algorithm {
+        MgmAlgorithmId::Aes128 => 16,
+        MgmAlgorithmId::Aes192 | MgmAlgorithmId::ThreeDes => 24,
+        MgmAlgorithmId::Aes256 => 32,
+    }
+}
+
+// The algorithm the YubiKey reports, checked against the key's length; without a report, the
+// AES variant of that length (AES-192 for 24 bytes, the default since firmware 5.7).
+fn mgmt_algorithm(
+    reported: Option<MgmAlgorithmId>,
+    key: &ManagementKey,
+) -> YkadaResult<MgmAlgorithmId> {
+    let length = key.as_bytes().len();
+    let by_length = match length {
+        16 => Some(MgmAlgorithmId::Aes128),
+        24 => Some(MgmAlgorithmId::Aes192),
+        32 => Some(MgmAlgorithmId::Aes256),
+        _other => None,
+    };
+    match (reported, by_length) {
+        (Some(algorithm), _) if key_length(algorithm) == length => Ok(algorithm),
+        (Some(algorithm), _) => Err(YkadaError::AuthenticationFailed {
+            reason: format!(
+                "the YubiKey's management key is {algorithm:?} ({} bytes), but the file holds {length} bytes",
+                key_length(algorithm)
+            ),
+        }),
+        (None, Some(algorithm)) => Ok(algorithm),
+        (None, None) => Err(YkadaError::AuthenticationFailed {
+            reason: format!("a management key can't be {length} bytes"),
+        }),
+    }
+}
+
 // PIN and signing failures in words a user can act on.
 pub(crate) fn signing_error(e: yubikey::Error) -> YkadaError {
     match e {
@@ -72,10 +119,12 @@ impl PivYubiKey {
 
 impl ManagementKeyVerifier for PivYubiKey {
     fn authenticate(&mut self, mgmt_key: Option<&ManagementKey>) -> YkadaResult<()> {
-        let mgm_key = if let Some(key) = mgmt_key {
-            MgmKey::try_from(key)?
-        } else {
-            MgmKey::get_default(&self.device)?
+        let mgm_key = match mgmt_key {
+            Some(key) => {
+                let reported = management_key_algorithm(&mut self.device);
+                MgmKey::from_bytes(key.as_bytes(), Some(mgmt_algorithm(reported, key)?))?
+            }
+            None => MgmKey::get_default(&self.device)?,
         };
 
         self.device.authenticate(&mgm_key).map_err(|e| match e {
@@ -225,6 +274,53 @@ impl Signer for PivYubiKey {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn key(bytes: usize) -> ManagementKey {
+        ManagementKey::new(vec![0x11; bytes]).unwrap()
+    }
+
+    #[test]
+    fn test_the_reported_management_key_algorithm_is_used() {
+        let cases = [
+            (MgmAlgorithmId::Aes128, 16),
+            (MgmAlgorithmId::Aes192, 24),
+            (MgmAlgorithmId::ThreeDes, 24),
+            (MgmAlgorithmId::Aes256, 32),
+        ];
+        cases.into_iter().for_each(|(algorithm, bytes)| {
+            assert_eq!(
+                mgmt_algorithm(Some(algorithm), &key(bytes)).unwrap(),
+                algorithm
+            );
+        });
+    }
+
+    #[test]
+    fn test_without_a_report_the_length_picks_aes() {
+        assert_eq!(
+            mgmt_algorithm(None, &key(16)).unwrap(),
+            MgmAlgorithmId::Aes128
+        );
+        assert_eq!(
+            mgmt_algorithm(None, &key(24)).unwrap(),
+            MgmAlgorithmId::Aes192
+        );
+        assert_eq!(
+            mgmt_algorithm(None, &key(32)).unwrap(),
+            MgmAlgorithmId::Aes256
+        );
+    }
+
+    #[test]
+    fn test_a_key_of_the_wrong_length_for_the_device_is_explained() {
+        let msg = mgmt_algorithm(Some(MgmAlgorithmId::Aes256), &key(24))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            msg.contains("Aes256 (32 bytes), but the file holds 24"),
+            "got: {msg}"
+        );
+    }
 
     #[test]
     fn test_one_yubikey_is_picked() {

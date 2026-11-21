@@ -119,7 +119,7 @@ mod tests {
         overwrite: Overwrite,
     ) -> (YkadaResult<GeneratedWallet>, Vec<Slot>) {
         let writes = device.written_slots();
-        let result = import(device, overwrite, &FakeYubiKey::MGMT_KEY);
+        let result = import(device, overwrite, &FakeYubiKey::mgmt_key());
         let written = writes.borrow().clone();
         (result, written)
     }
@@ -137,7 +137,7 @@ mod tests {
         let wallet = import(
             FakeYubiKey::empty(),
             Overwrite::Refuse,
-            &FakeYubiKey::MGMT_KEY,
+            &FakeYubiKey::mgmt_key(),
         )
         .unwrap();
         assert_eq!(wallet.address.to_bech32().unwrap(), KNOWN_ADDRESS_MAINNET);
@@ -199,7 +199,7 @@ mod tests {
         let wallet = import(
             provisioned_device(),
             Overwrite::Allow,
-            &FakeYubiKey::MGMT_KEY,
+            &FakeYubiKey::mgmt_key(),
         );
         assert!(wallet.is_ok(), "error: {:?}", wallet.err());
     }
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn test_wrong_mgmt_key_is_rejected() {
-        let wrong_key = ManagementKey::new([1; 24]);
+        let wrong_key = ManagementKey::new(vec![1; 24]).unwrap();
         assert!(matches!(
             import(FakeYubiKey::empty(), Overwrite::Refuse, &wrong_key).unwrap_err(),
             YkadaError::AuthenticationFailed { .. }

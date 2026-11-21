@@ -19,7 +19,7 @@ Run it on a computer you trust, ideally offline (see the [security model](securi
 |--------|---------|
 | `--pin-policy never\|once\|always` | When the YubiKey asks for the PIN. Default `always`: before every signature |
 | `--touch-policy never\|always\|cached` | When it needs a touch. Default `always` |
-| `--mgmt-key-file FILE` | The PIV management key (hex), if you changed it from the factory key |
+| `--mgmt-key-file FILE` | The PIV management key in hex, if you changed it from the factory key: 16, 24 or 32 bytes for AES-128, AES-192 or 3DES, and AES-256 |
 | `--force` | Replace the keys in slots 9c and 9d. Without it, ykada refuses if either slot already holds a key, from ykada or another tool |
 
 ## import

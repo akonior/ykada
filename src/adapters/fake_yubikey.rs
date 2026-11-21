@@ -25,7 +25,9 @@ pub(crate) struct FakeYubiKey {
 }
 
 impl FakeYubiKey {
-    pub(crate) const MGMT_KEY: ManagementKey = ManagementKey::new([8; 24]);
+    pub(crate) fn mgmt_key() -> ManagementKey {
+        ManagementKey::new(vec![8; 24]).unwrap()
+    }
 
     pub(crate) fn empty() -> Self {
         Self {
@@ -98,7 +100,7 @@ impl PinVerifier for FakeYubiKey {
 
 impl ManagementKeyVerifier for FakeYubiKey {
     fn authenticate(&mut self, mgmt_key: Option<&ManagementKey>) -> YkadaResult<()> {
-        match mgmt_key.is_none_or(|key| *key == Self::MGMT_KEY) {
+        match mgmt_key.is_none_or(|key| *key == Self::mgmt_key()) {
             true => {
                 self.authenticated = true;
                 Ok(())

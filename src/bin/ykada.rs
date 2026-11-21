@@ -312,6 +312,12 @@ fn provision_wallet(
     args: ProvisionArgs,
 ) -> anyhow::Result<GeneratedWallet> {
     let mgmt_key = resolve_mgmt_key(args.mgmt_key_file)?;
+    if mgmt_key
+        .as_ref()
+        .is_some_and(ManagementKey::is_factory_default)
+    {
+        eprintln!("Note: the --mgmt-key-file holds the factory PIV management key, so anyone holding this YubiKey can replace its keys — change it with `ykman piv access change-management-key`.");
+    }
     if mgmt_key.is_none() {
         eprintln!("Note: no --mgmt-key-file given, trying the default PIV management key. If it works, anyone holding this YubiKey can replace its keys — change it with `ykman piv access change-management-key`.");
     }
