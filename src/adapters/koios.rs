@@ -44,11 +44,14 @@ impl KoiosClient {
                 Network::Preview => "https://preview.koios.rest/api/v1",
             },
             // Bounded timeouts so a stalled/broken Koios endpoint can't hang the CLI.
-            agent: ureq::AgentBuilder::new()
-                .timeout_connect(Duration::from_secs(5))
-                .timeout_read(Duration::from_secs(30))
-                .timeout_write(Duration::from_secs(30))
-                .build(),
+            agent: ureq::Agent::new_with_config(
+                ureq::Agent::config_builder()
+                    .timeout_connect(Some(Duration::from_secs(5)))
+                    .timeout_send_body(Some(Duration::from_secs(30)))
+                    .timeout_recv_response(Some(Duration::from_secs(30)))
+                    .timeout_recv_body(Some(Duration::from_secs(30)))
+                    .build(),
+            ),
         }
     }
 
@@ -60,9 +63,9 @@ impl KoiosClient {
         let response: Vec<KoiosAddressInfo> = self
             .agent
             .post(&url)
-            .set("Content-Type", "application/json")
             .send_json(body)?
-            .into_json()?;
+            .into_body()
+            .read_json()?;
         Ok(response.into_iter().next())
     }
 }
@@ -94,12 +97,7 @@ impl UtxoFetcher for KoiosClient {
 impl TipFetcher for KoiosClient {
     fn fetch_tip_slot(&self) -> YkadaResult<u64> {
         let url = format!("{}/tip", self.base_url);
-        let response: Vec<KoiosTip> = self
-            .agent
-            .get(&url)
-            .set("Content-Type", "application/json")
-            .call()?
-            .into_json()?;
+        let response: Vec<KoiosTip> = self.agent.get(&url).call()?.into_body().read_json()?;
         response
             .into_iter()
             .next()
@@ -155,17 +153,24 @@ fn submit_with_retry(
 impl KoiosClient {
     fn submit_once(&self, signed_tx_cbor: &[u8]) -> Result<(), SubmitError> {
         let url = format!("{}/submittx", self.base_url);
-        self.agent
+        // Keep error responses as responses: their body tells a rejection from a lost node.
+        let response = self
+            .agent
             .post(&url)
-            .set("Content-Type", "application/cbor")
-            .send_bytes(signed_tx_cbor)
-            .map(|_| ())
-            .map_err(|e| match e {
-                ureq::Error::Status(code, resp) => {
-                    classify_submit_failure(code, resp.into_string().unwrap_or_default())
-                }
-                other => SubmitError::Rejected(YkadaError::Network(other.to_string())),
-            })
+            .header("Content-Type", "application/cbor")
+            .config()
+            .http_status_as_error(false)
+            .build()
+            .send(signed_tx_cbor)
+            .map_err(|e| SubmitError::Rejected(YkadaError::Network(e.to_string())))?;
+        let status = response.status();
+        match status.is_success() {
+            true => Ok(()),
+            false => Err(classify_submit_failure(
+                status.as_u16(),
+                response.into_body().read_to_string().unwrap_or_default(),
+            )),
+        }
     }
 }
 
@@ -182,6 +187,8 @@ impl TxSubmitter for KoiosClient {
 mod tests {
     use super::*;
     use std::cell::Cell;
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::net::TcpListener;
 
     const UNREACHABLE_BODY: &str = r#"{"contents":{"contents":"Network.Socket.connect: <socket: 14>: does not exist (No such file or directory)","tag":"TxCmdTxSubmitConnectionError"},"tag":"TxSubmitFail"}"#;
     const REJECTED_BODY: &str = r#"{"contents":{"contents":{"contents":{"era":"ShelleyBasedEraConway"},"tag":"TxValidationErrorInCardanoMode"},"tag":"TxCmdTxSubmitValidationError"},"tag":"TxSubmitFail"}"#;
@@ -235,5 +242,61 @@ mod tests {
         }]);
         assert!(matches!(result, Err(SubmitError::Rejected(_))));
         assert_eq!(calls, 1);
+    }
+
+    // Answers one request on localhost with the given status and body; returns its URL.
+    fn serve_once(status: u16, body: &'static str) -> &'static str {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(&stream);
+            let length = request_content_length(&mut reader);
+            reader.read_exact(&mut vec![0; length]).unwrap();
+            write!(
+                &stream,
+                "HTTP/1.1 {status} X\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+        });
+        Box::leak(url.into_boxed_str())
+    }
+
+    // Reads the request headers and returns the body length.
+    fn request_content_length(reader: &mut impl BufRead) -> usize {
+        reader
+            .lines()
+            .map(Result::unwrap)
+            .take_while(|line| !line.is_empty())
+            .fold(0, |length, line| {
+                line.to_ascii_lowercase()
+                    .strip_prefix("content-length:")
+                    .map_or(length, |n| n.trim().parse().unwrap())
+            })
+    }
+
+    fn client(base_url: &'static str) -> KoiosClient {
+        KoiosClient {
+            base_url,
+            ..KoiosClient::for_network(Network::Preview)
+        }
+    }
+
+    #[test]
+    fn test_submit_accepts_a_success_status() {
+        assert!(client(serve_once(202, "\"ok\""))
+            .submit_once(&[0x84])
+            .is_ok());
+    }
+
+    #[test]
+    fn test_submit_reads_the_body_of_an_error_status() {
+        let unreachable = client(serve_once(400, UNREACHABLE_BODY)).submit_once(&[0x84]);
+        assert!(matches!(unreachable, Err(SubmitError::NodeUnreachable(_))));
+
+        let rejected = client(serve_once(400, REJECTED_BODY)).submit_once(&[0x84]);
+        assert!(matches!(rejected, Err(SubmitError::Rejected(e))
+            if e.to_string().contains("HTTP 400") && e.to_string().contains("TxCmdTxSubmitValidationError")));
     }
 }

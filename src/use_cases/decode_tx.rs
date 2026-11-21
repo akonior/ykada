@@ -56,7 +56,7 @@ pub(crate) fn summarize_tx(content: &str) -> YkadaResult<TxSummary> {
     })
 }
 
-fn body_extras(body: &conway::MintedTransactionBody<'_>) -> Vec<&'static str> {
+fn body_extras(body: &conway::TransactionBody<'_>) -> Vec<&'static str> {
     [
         (body.certificates.is_some(), "certificates"),
         (body.withdrawals.is_some(), "withdrawals"),
@@ -76,13 +76,13 @@ fn body_extras(body: &conway::MintedTransactionBody<'_>) -> Vec<&'static str> {
     .collect()
 }
 
-fn summarize_output(output: &conway::MintedTransactionOutput<'_>) -> TxOutputSummary {
+fn summarize_output(output: &conway::TransactionOutput<'_>) -> TxOutputSummary {
     let (address, lovelace, has_tokens) = match output {
-        conway::PseudoTransactionOutput::Legacy(o) => match &o.amount {
+        conway::TransactionOutput::Legacy(o) => match &o.amount {
             alonzo::Value::Coin(c) => (&o.address, *c, false),
             alonzo::Value::Multiasset(c, _) => (&o.address, *c, true),
         },
-        conway::PseudoTransactionOutput::PostAlonzo(o) => match &o.value {
+        conway::TransactionOutput::PostAlonzo(o) => match &o.value {
             conway::Value::Coin(c) => (&o.address, *c, false),
             conway::Value::Multiasset(c, _) => (&o.address, *c, true),
         },

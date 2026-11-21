@@ -127,8 +127,11 @@ mod tests {
         build(utxos, send_lovelace).unwrap_err().to_string()
     }
 
-    fn body(cbor: &[u8]) -> conway::TransactionBody {
-        conway::Tx::decode_fragment(cbor).unwrap().transaction_body
+    fn body(cbor: &[u8]) -> conway::TransactionBody<'_> {
+        conway::Tx::decode_fragment(cbor)
+            .unwrap()
+            .transaction_body
+            .unwrap()
     }
 
     #[test]

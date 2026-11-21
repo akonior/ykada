@@ -23,13 +23,13 @@ pub(crate) fn parse_tx_input(content: &str) -> YkadaResult<Vec<u8>> {
     }
 }
 
-pub(crate) fn decode_tx(tx_cbor: &[u8]) -> YkadaResult<conway::MintedTx<'_>> {
-    conway::MintedTx::decode_fragment(tx_cbor)
+pub(crate) fn decode_tx(tx_cbor: &[u8]) -> YkadaResult<conway::Tx<'_>> {
+    conway::Tx::decode_fragment(tx_cbor)
         .map_err(|e| YkadaError::Tx(format!("invalid transaction CBOR: {e}")))
 }
 
 // Blake2b-256 over the body bytes exactly as they appear in the transaction.
-pub(crate) fn body_hash(tx: &conway::MintedTx<'_>) -> TxHash {
+pub(crate) fn body_hash(tx: &conway::Tx<'_>) -> TxHash {
     TxHash::new(*Hasher::<256>::hash(tx.transaction_body.raw_cbor()))
 }
 
@@ -49,7 +49,7 @@ pub(super) fn sign_tx<S: Signer>(
     tx_cbor: &[u8],
     params: SignTxParams,
 ) -> YkadaResult<Vec<u8>> {
-    let tx = decode_tx(tx_cbor)?;
+    let mut tx = decode_tx(tx_cbor)?;
     let hash = body_hash(&tx);
     let sig = signer.sign(hash.as_ref(), PAYMENT_SLOT, params.pin.as_ref())?;
     verify_signature(&params.payment_vkey, hash.as_ref(), &sig)?;
@@ -58,17 +58,12 @@ pub(super) fn sign_tx<S: Signer>(
         vkey: params.payment_vkey.to_vec().into(),
         signature: sig.to_vec().into(),
     };
-    let mut witness_set = (*tx.transaction_witness_set).clone();
+    // Mutating the witness set drops only its raw bytes, so only it is re-encoded.
+    let witness_set = &mut *tx.transaction_witness_set;
     witness_set.vkeywitness = Some(with_witness(witness_set.vkeywitness.take(), ours));
 
-    conway::PseudoTx {
-        transaction_body: tx.transaction_body,
-        transaction_witness_set: witness_set,
-        success: tx.success,
-        auxiliary_data: tx.auxiliary_data,
-    }
-    .encode_fragment()
-    .map_err(|e| YkadaError::Tx(format!("failed to encode signed tx: {e}")))
+    tx.encode_fragment()
+        .map_err(|e| YkadaError::Tx(format!("failed to encode signed tx: {e}")))
 }
 
 // Append our witness, replacing an earlier one for the same key (re-signing is idempotent).

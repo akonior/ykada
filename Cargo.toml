@@ -7,38 +7,35 @@ license = "Apache-2.0"
 repository = "https://github.com/akonior/ykada"
 
 [dependencies]
-ed25519-dalek = "2.2.0"
+ed25519-dalek = "3"
 hex = "0.4.3"
 thiserror = "2.0"
-# Ed25519 import/sign (firmware 5.7+) is merged upstream but not in a stable release yet;
-# pinned to that exact commit.
-yubikey = { git = "https://github.com/akonior/yubikey.rs", rev = "872ba35f5453b0bec611b468102c61c123768965", features = [
-  "untested",
-] }
+# 0.9 adds Ed25519 import and signing (YubiKey firmware 5.7+).
+yubikey = "0.9.0-rc.0"
 
 # Key derivation
-bip39 = { version = "2.0", features = ["zeroize"] }
-pbkdf2 = "0.12"
-sha2 = "0.10"
-ed25519-bip32 = "0.4"
-rand_core = "0.9"
+bip39 = { version = "3", features = ["zeroize"] }
+pbkdf2 = "0.13"
+sha2 = "0.11"
+ed25519-bip32 = "0.5"
+getrandom = "0.4"
 
 # Network
-ureq = { version = "2", features = ["json"] }
+ureq = { version = "3", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Cardano addresses and transactions
-pallas-txbuilder = "0.35"
-pallas-addresses = "0.35"
-pallas-crypto = "0.35"
-pallas-primitives = "0.35"
+pallas-txbuilder = "1.5"
+pallas-addresses = "1.5"
+pallas-crypto = "1.5"
+pallas-primitives = "1.5"
 
 # CLI
 anyhow = "1.0.100"
 clap = { version = "4.5.53", features = ["derive"] }
-pinentry = "0.5"
-secrecy = "0.8"
+pinentry = "0.8"
+secrecy = "0.10"
 
 # The profile that 'dist' will build with
 [profile.dist]

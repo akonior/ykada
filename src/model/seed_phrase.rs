@@ -18,7 +18,7 @@ pub enum SeedPhraseError {
     #[error("Invalid mnemonic")]
     InvalidMnemonic(#[from] bip39::Error),
     #[error("OS entropy source unavailable")]
-    EntropyUnavailable(rand_core::OsError),
+    EntropyUnavailable(getrandom::Error),
 }
 
 impl TryFrom<&str> for SeedPhrase {
@@ -37,11 +37,8 @@ impl SeedPhrase {
 
     // Not pure: uses OS entropy.
     pub fn generate() -> Result<Self, SeedPhraseError> {
-        use rand_core::{OsRng, TryRngCore};
         let mut entropy = [0u8; 32];
-        OsRng
-            .try_fill_bytes(&mut entropy)
-            .map_err(SeedPhraseError::EntropyUnavailable)?;
+        getrandom::fill(&mut entropy).map_err(SeedPhraseError::EntropyUnavailable)?;
         let mnemonic = Mnemonic::from_entropy_in(Language::English, &entropy)?;
         Ok(SeedPhrase(mnemonic))
     }
