@@ -10,7 +10,7 @@ pub struct KeyConfig {
 }
 
 pub(crate) trait KeyManager {
-    // Import `key` and store `vk` next to it, so `DeviceReader::read_public_key` can return it.
+    // Import `key` and store `vk` next to it, as `DeviceReader::public_key_object`.
     fn import_key(
         &mut self,
         key: SigningKey,

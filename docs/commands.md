@@ -20,7 +20,7 @@ Run it on a computer you trust, ideally offline (see the [security model](securi
 | `--pin-policy never\|once\|always` | When the YubiKey asks for the PIN. Default `always`: before every signature |
 | `--touch-policy never\|always\|cached` | When it needs a touch. Default `always` |
 | `--mgmt-key-file FILE` | The PIV management key (hex), if you changed it from the factory key |
-| `--force` | Replace a wallet that is already on the YubiKey. Without it, ykada refuses |
+| `--force` | Replace the keys in slots 9c and 9d. Without it, ykada refuses if either slot already holds a key, from ykada or another tool |
 
 ## import
 
@@ -35,7 +35,9 @@ Only a mnemonic made by ykada gives back the same address; see
 
 ## info
 
-Shows the wallet address. It reads only the public keys, so it needs no PIN and no touch.
+Shows the wallet address. It reads only the public keys the YubiKey reports for slots 9c and 9d,
+so it needs no PIN and no touch. If only one slot holds a key, or a key doesn't match the public
+key ykada stored with it, `info` fails instead of showing an address.
 
 ```sh
 ykada info --network mainnet

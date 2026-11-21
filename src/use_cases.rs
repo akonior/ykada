@@ -12,4 +12,4 @@ pub(crate) use generate_wallet::generate_wallet_use_case;
 pub(crate) use send_ada::send_ada_use_case;
 pub use send_ada::SendAdaParams;
 pub(crate) use sign_external_tx::{sign_tx_file_use_case, SignTxFileParams};
-pub(crate) use wallet_info::wallet_info_use_case;
+pub(crate) use wallet_info::{wallet_info_use_case, wallet_keys};

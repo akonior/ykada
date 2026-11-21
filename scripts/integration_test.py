@@ -1,32 +1,29 @@
 #!/usr/bin/env python3
-"""ykada end-to-end integration test (requires a connected YubiKey 5.7+).
+"""ykada end-to-end integration test (requires one connected YubiKey 5, firmware 5.7+).
 
-Layered, so it is safe to run on every refactor:
+By default it uses the wallet already on the YubiKey and stays offline: it reads info and
+balance, builds a transaction (--dry-run), signs it on the device (--only-sign) and signs the
+same transaction through sign-tx. Every transaction goes through `decode-tx`, which verifies
+the Ed25519 witness locally and confirms that sign-tx keeps the body. Nothing is submitted.
 
-  default       Offline suite. Resets the device, imports a wallet (via --seed-file),
-                reads info/balance, builds (--dry-run), signs on-device (--only-sign),
-                and signs the same tx via stdin (sign-tx). Every tx is round-tripped
-                through `decode-tx`, which re-verifies the Ed25519 witness locally and
-                confirms sign-tx preserves the body; a couple of negative checks run too.
-                Real hardware signatures, but nothing hits the mempool — fast & deterministic.
-  --live        Also submits a real transaction and polls Koios until it confirms.
-  --no-reset    Skip the PIV reset + import; run against the wallet already on the
-                device (no seed required). Handy for quick iterative runs.
+  --reset   First wipe the YubiKey's PIV applet (`ykman piv reset`) and import the test
+            wallet from YKADA_SEED. Before the reset it reads the key metadata of every PIV
+            key slot on the one connected YubiKey, and resets only if no slot holds a key,
+            or if 9c and 9d are the only slots with keys and hold the wallet in
+            YKADA_ADDRESS. Anything else, including a check that fails, resets nothing.
+  --live    Also submit a transaction and wait until Koios sees it confirmed.
 
-WARNING: a full run wipes all PIV keys on the connected YubiKey (`ykman piv reset`).
-It refuses to do so when the key holds a wallet other than YKADA_ADDRESS.
-
-Secrets: the funded seed is NEVER committed. It is read from scripts/.env
-(git-ignored). Copy scripts/.env.example to scripts/.env and fill in YKADA_SEED.
-
-Config (env or scripts/.env):
-  YKADA_SEED       BIP39 mnemonic to import           (required unless --no-reset)
-  YKADA_ADDRESS    testnet address of that wallet; the only wallet the test may wipe
-  YKADA_NETWORK    preview | preprod                   (default: preview)
-  YKADA_RECIPIENT  destination address                 (default: the wallet itself)
-  YKADA_AMOUNT     lovelace to send                    (default: 1500000)
-  YKADA_BIN        path to the ykada binary            (default: build & use release)
+Config (environment or scripts/.env, which is git-ignored; see scripts/.env.example):
+  YKADA_SEED       mnemonic of the test wallet           (needed with --reset)
+  YKADA_ADDRESS    testnet address of that wallet        (needed with --reset)
+  YKADA_NETWORK    preview | preprod                     (default: preview)
+  YKADA_RECIPIENT  destination address                   (default: the wallet itself)
+  YKADA_AMOUNT     lovelace to send                      (default: 1500000)
+  YKADA_BIN        path to the ykada binary              (default: build the release binary)
 """
+import argparse
+import base64
+import hashlib
 import json
 import os
 import subprocess
@@ -136,16 +133,162 @@ def is_hex(s):
     return bool(s) and all(c in "0123456789abcdef" for c in s)
 
 
+# --- Reset guard -------------------------------------------------------------------------
+# `ykman piv reset` deletes every key on the PIV applet, so it runs only after every key
+# slot of the one connected YubiKey has been read and holds nothing but the test wallet.
+
+# Slots that can hold a user's private key. 9b is the management key, which a reset sets
+# back to its default, and f9 holds the factory attestation key.
+KEY_SLOTS = ["9a", "9c", "9d", "9e"] + [f"{n:x}" for n in range(0x82, 0x96)]
+WALLET_SLOTS = ["9c", "9d"]
+NO_KEY = "No key stored in slot"
+ED25519_SPKI = bytes.fromhex("302a300506032b6570032100")  # DER prefix of an Ed25519 key
+BECH32 = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+
+
+class ResetRefused(Exception):
+    """The YubiKey may hold keys other than the test wallet, or it could not be checked."""
+
+
+def capture(*args, timeout=60):
+    """Run a command and return (exit code, stdout, stderr); the code is None if it did not run."""
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return None, "", str(e)
+    return result.returncode, result.stdout, result.stderr
+
+
+def only_serial(sh):
+    """The serial of the one connected YubiKey."""
+    listed = [sh("ykman", "list"), sh("ykman", "list", "--serials")]
+    if any(code != 0 for code, _, _ in listed):
+        raise ResetRefused("could not list the connected YubiKeys")
+    devices, serials = ([line for line in out.splitlines() if line.strip()] for _, out, _ in listed)
+    if len(devices) != 1 or len(serials) != 1:
+        raise ResetRefused(f"{len(devices)} YubiKeys are connected ({len(serials)} with a "
+                           "readable serial); connect only the test key")
+    return serials[0].strip()
+
+
+def slot_has_key(sh, serial, slot):
+    """Whether `slot` holds a private key, from its metadata. Anything unclear is an error."""
+    code, out, err = sh("ykman", "--device", serial, "piv", "keys", "info", slot)
+    if code == 0 and "Algorithm:" in out:
+        return True
+    if code == 1 and NO_KEY in err:
+        return False
+    raise ResetRefused(f"could not read the key metadata of slot {slot}: "
+                       f"{(err or out).strip() or f'exit code {code}'}")
+
+
+def slot_public_key(sh, serial, slot):
+    """The raw Ed25519 public key that the YubiKey reports for the key in `slot`."""
+    code, pem, _ = sh("ykman", "--device", serial, "piv", "keys", "export", slot, "-")
+    body = "".join(line for line in pem.splitlines() if line and not line.startswith("-----"))
+    try:
+        der = base64.b64decode(body, validate=True) if code == 0 else b""
+    except ValueError:
+        der = b""
+    if not der.startswith(ED25519_SPKI) or len(der) != len(ED25519_SPKI) + 32:
+        raise ResetRefused(f"could not read an Ed25519 public key from slot {slot}")
+    return der[len(ED25519_SPKI):]
+
+
+def bech32_polymod(values):
+    generator = [0x3B6A57B2, 0x26508E6D, 0x1EA119FA, 0x3D4233DD, 0x2A1462B3]
+    checksum = 1
+    for value in values:
+        top = checksum >> 25
+        checksum = (checksum & 0x1FFFFFF) << 5 ^ value
+        for i in range(5):
+            checksum ^= generator[i] if (top >> i) & 1 else 0
+    return checksum
+
+
+def bech32_hrp_expand(hrp):
+    return [ord(c) >> 5 for c in hrp] + [0] + [ord(c) & 31 for c in hrp]
+
+
+def bech32_payload(address):
+    """The bytes encoded in a bech32 string, after checking its checksum."""
+    hrp, _, data = address.lower().rpartition("1")
+    if not hrp or len(data) < 6 or any(c not in BECH32 for c in data):
+        raise ValueError("not a bech32 string")
+    values = [BECH32.index(c) for c in data]
+    if bech32_polymod(bech32_hrp_expand(hrp) + values) != 1:
+        raise ValueError("bad checksum")
+    bits = "".join(f"{v:05b}" for v in values[:-6])
+    return bytes(int(bits[i:i + 8], 2) for i in range(0, len(bits) - 7, 8))
+
+
+def wallet_key_hashes(address):
+    """The payment and stake key hashes of a base address (header type 0)."""
+    try:
+        payload = bech32_payload(address)
+    except ValueError as e:
+        raise ResetRefused(f"YKADA_ADDRESS is not a valid address ({e})")
+    if len(payload) != 57 or payload[0] >> 4 != 0:
+        raise ResetRefused("YKADA_ADDRESS is not a base address with a payment and a stake key")
+    return payload[1:29], payload[29:57]
+
+
+def key_hash(public_key):
+    return hashlib.blake2b(public_key, digest_size=28).digest()
+
+
+def check_reset_is_safe(sh, test_address):
+    """The serial of the YubiKey that may be reset; raises ResetRefused otherwise."""
+    serial = only_serial(sh)
+    used = [slot for slot in KEY_SLOTS if slot_has_key(sh, serial, slot)]
+    others = [slot for slot in used if slot not in WALLET_SLOTS]
+    if not used:
+        return serial
+    if others:
+        raise ResetRefused(f"slot {', '.join(others)} holds a key that is not the test wallet")
+    if used != WALLET_SLOTS:
+        raise ResetRefused(f"only slot {used[0]} holds a key, so it is not the whole test wallet")
+    on_device = tuple(key_hash(slot_public_key(sh, serial, slot)) for slot in WALLET_SLOTS)
+    if on_device != wallet_key_hashes(test_address):
+        raise ResetRefused("the keys in 9c and 9d are not the wallet in YKADA_ADDRESS")
+    return serial
+
+
+def reset_piv(sh, test_address):
+    """Reset the PIV applet of the checked YubiKey, and only that one. Returns its serial."""
+    serial = check_reset_is_safe(sh, test_address)
+    code, _, err = sh("ykman", "--device", serial, "piv", "reset", "--force")
+    if code != 0:
+        raise RuntimeError(f"ykman piv reset failed: {err.strip()}")
+    return serial
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description=__doc__.split("\n\n", 1)[0],
+        epilog=__doc__.split("\n\n", 1)[1],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--reset", action="store_true",
+                        help="wipe the PIV applet and import the test wallet first")
+    parser.add_argument("--live", action="store_true",
+                        help="also submit a transaction and wait for it to be confirmed")
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
     load_dotenv(ROOT / "scripts" / ".env")
-    live = "--live" in sys.argv[1:]
-    no_reset = "--no-reset" in sys.argv[1:]
 
     network = os.environ.get("YKADA_NETWORK", "preview")
     if network not in KOIOS:
         fail(f"unsupported network: {network} (this test runs on preview or preprod only)")
     amount = os.environ.get("YKADA_AMOUNT", "1500000")
     seed = os.environ.get("YKADA_SEED", "")
+    test_address = os.environ.get("YKADA_ADDRESS", "")
+    if args.reset and not (seed and test_address):
+        fail("--reset needs YKADA_SEED and YKADA_ADDRESS — copy scripts/.env.example to "
+             "scripts/.env")
 
     if subprocess.run(["ykman", "list"], capture_output=True).returncode != 0:
         fail("no YubiKey detected (is `ykman` installed and a key plugged in?)")
@@ -157,25 +300,22 @@ def main():
         binary = str(ROOT / "target" / "release" / "ykada")
         ok("built")
 
-    if no_reset:
-        step("Skipping reset/import (--no-reset); using on-device wallet")
+    if not args.reset:
+        step("Using the wallet already on the YubiKey (no reset)")
         addr = address_from(run(binary, "info", "--network", network))
         if not addr:
-            fail("no wallet on device — run without --no-reset to import one")
+            fail("no wallet on the YubiKey — import the test wallet, or run with --reset")
+        ok(f"wallet: {addr}")
     else:
-        if not seed:
-            fail("YKADA_SEED is not set — copy scripts/.env.example to scripts/.env")
-        step("Checking that the YubiKey holds no wallet, or only the test wallet")
-        on_device = address_from(run(binary, "info", "--network", network))
-        if on_device and on_device != os.environ.get("YKADA_ADDRESS", ""):
-            fail(f"the YubiKey holds another wallet ({on_device}); refusing to wipe it. "
-                 "If it is the test wallet, set YKADA_ADDRESS to it in scripts/.env; "
-                 "otherwise restore your own backup first or use another key")
-        ok("safe to reset")
-
-        step("Resetting YubiKey PIV (wipes all keys)")
-        run("ykman", "piv", "reset", "--force")
-        ok("device reset to defaults")
+        step("Checking every PIV key slot, then resetting the PIV applet (wipes all keys)")
+        try:
+            serial = reset_piv(capture, test_address)
+        except ResetRefused as e:
+            fail(f"not resetting: {e}. Nothing was changed. If you are sure that nothing on "
+                 "this YubiKey is needed, reset it yourself with `ykman piv reset`")
+        except RuntimeError as e:
+            fail(str(e))
+        ok(f"YubiKey {serial} held no keys other than the test wallet; PIV reset to defaults")
 
         step("info on a freshly-reset device reports no wallet")
         if address_from(run(binary, "info", "--network", network)):
@@ -194,6 +334,8 @@ def main():
             seed_file.unlink(missing_ok=True)
         if not addr:
             fail("import did not print an address")
+        if addr != test_address:
+            fail(f"YKADA_SEED gives {addr}, not YKADA_ADDRESS ({test_address})")
         ok(f"imported, address: {addr}")
 
         info_addr = address_from(run(binary, "info", "--network", network))
@@ -247,7 +389,7 @@ def main():
              "--network", network, "--dry-run")
     ok("invalid recipient and --ada/--lovelace conflict are both rejected")
 
-    if not live:
+    if not args.live:
         print()
         ok("OFFLINE SUITE PASSED (nothing submitted). Re-run with --live to submit.")
         return

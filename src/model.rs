@@ -22,7 +22,7 @@ pub use pin::Pin;
 pub use policy::{PinPolicy, PolicyError, TouchPolicy};
 pub use seed_phrase::{SeedPhrase, SeedPhraseError};
 pub use send_mode::{SendMode, SendOutcome};
-pub use slot::{Slot, PAYMENT_SLOT, STAKE_SLOT};
+pub use slot::{Slot, SlotKey, PAYMENT_SLOT, STAKE_SLOT};
 pub use tx_hash::TxHash;
 pub use utxo::Utxo;
 pub use wallet_config::{Overwrite, WalletConfig};

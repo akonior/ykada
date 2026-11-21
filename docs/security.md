@@ -14,8 +14,13 @@
 - **No secrets on the command line.** The mnemonic comes from a hidden prompt or a file, the PIN
   from a hidden prompt, and the management key from a file. None of them end up in your shell
   history.
-- **A wallet is never replaced by accident.** `generate` and `import` refuse to overwrite the
-  keys on the YubiKey unless you add `--force`.
+- **The address comes from the keys themselves.** ykada asks the YubiKey for the public keys in
+  slots 9c and 9d and builds the address from them. It also keeps its own copy of each public
+  key on the YubiKey; if a copy doesn't match its key, for example because someone with the
+  management key rewrote it, ykada refuses to show the address or sign.
+- **A key is never replaced by accident.** `generate` and `import` write only slots 9c and 9d,
+  and refuse if either already holds a key, from ykada or another tool, unless you add
+  `--force`.
 
 ## What it does not protect against
 

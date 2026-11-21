@@ -1,11 +1,11 @@
 use crate::error::{YkadaError, YkadaResult};
-use crate::model::{ManagementKey, Pin, PinPolicy, Slot, TouchPolicy};
+use crate::model::{ManagementKey, Pin, PinPolicy, Slot, SlotKey, TouchPolicy};
 use crate::ports::{
     DeviceFinder, DeviceReader, KeyConfig, KeyManager, ManagementKeyVerifier, PinVerifier, Signer,
     SlotPolicyReader,
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use yubikey::piv::{import_cv_key, sign_data, AlgorithmId};
+use yubikey::piv::{import_cv_key, sign_data, AlgorithmId, SlotAlgorithmId, SlotMetadata};
 use yubikey::{Context, MgmKey, ObjectId, YubiKey};
 
 // The verifying key is stored in the slot's PIV certificate data object.
@@ -114,20 +114,59 @@ impl DeviceReader for PivYubiKey {
         (v.major, v.minor, v.patch)
     }
 
-    fn read_public_key(&mut self, slot: Slot) -> YkadaResult<Option<VerifyingKey>> {
+    // GET METADATA answers "reference data not found" only for a slot without a key; any
+    // other failure is passed on, so callers never mistake it for an empty slot.
+    fn slot_key(&mut self, slot: Slot) -> YkadaResult<SlotKey> {
+        match yubikey::piv::metadata(&mut self.device, slot.to_yubikey_slot_id()) {
+            Ok(metadata) => slot_key_from_metadata(slot, metadata),
+            Err(yubikey::Error::NotFound) => Ok(SlotKey::Empty),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    fn public_key_object(&mut self, slot: Slot) -> YkadaResult<Option<VerifyingKey>> {
         match self.device.fetch_object(slot_to_vk_object_id(slot)) {
             Ok(bytes) => {
-                let arr: [u8; 32] =
-                    bytes[..]
-                        .try_into()
-                        .map_err(|_| YkadaError::InvalidKeyFormat {
-                            format: format!("slot {slot:?} holds data not written by ykada (use --force to overwrite)"),
-                        })?;
+                let arr: [u8; 32] = bytes[..].try_into().map_err(|_| not_ykada_data(slot))?;
                 Ok(Some(VerifyingKey::from_bytes(&arr)?))
             }
             Err(yubikey::Error::NotFound) => Ok(None),
             Err(e) => Err(e.into()),
         }
+    }
+}
+
+fn not_ykada_data(slot: Slot) -> YkadaError {
+    YkadaError::InvalidKeyFormat {
+        format: format!(
+            "slot {} holds data not written by ykada (use --force to overwrite)",
+            slot.id()
+        ),
+    }
+}
+
+fn slot_key_from_metadata(slot: Slot, metadata: SlotMetadata) -> YkadaResult<SlotKey> {
+    let malformed = |what: &str| YkadaError::InvalidKeyFormat {
+        format: format!("slot {} reports {what}", slot.id()),
+    };
+    match (metadata.algorithm, metadata.public) {
+        (SlotAlgorithmId::Asymmetric(AlgorithmId::Ed25519), Some(public)) => {
+            let bytes: [u8; 32] = public
+                .subject_public_key
+                .raw_bytes()
+                .try_into()
+                .map_err(|_| malformed("an Ed25519 public key of the wrong length"))?;
+            Ok(SlotKey::Ed25519(VerifyingKey::from_bytes(&bytes)?))
+        }
+        (SlotAlgorithmId::Asymmetric(AlgorithmId::Ed25519), None) => {
+            Err(malformed("an Ed25519 key without its public key"))
+        }
+        (
+            SlotAlgorithmId::Asymmetric(_)
+            | SlotAlgorithmId::Management(_)
+            | SlotAlgorithmId::PinPuk,
+            _,
+        ) => Ok(SlotKey::Other),
     }
 }
 

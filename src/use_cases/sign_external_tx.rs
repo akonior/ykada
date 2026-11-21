@@ -4,7 +4,8 @@ use pallas_primitives::{conway, Fragment, NonEmptySet};
 use crate::error::{YkadaError, YkadaResult};
 use crate::logic::verify_signature;
 use crate::model::{Pin, SendMode, SendOutcome, TxHash, PAYMENT_SLOT};
-use crate::ports::{DeviceFinder, DeviceReader, Signer, TxSubmitter};
+use crate::ports::{DeviceFinder, Signer, TxSubmitter};
+use crate::use_cases::wallet_keys;
 
 #[derive(serde::Deserialize)]
 struct TxFileExport {
@@ -133,12 +134,11 @@ where
     X: TxSubmitter,
 {
     let unsigned = parse_tx_input(&params.tx_file_content)?;
-    let payment_vkey = finder
-        .find_first()?
-        .read_public_key(PAYMENT_SLOT)?
+    let payment_vkey = wallet_keys(&mut finder.find_first()?)?
         .ok_or_else(|| {
-            YkadaError::WalletState("no payment key on YubiKey — import a wallet first".into())
+            YkadaError::WalletState("no wallet on YubiKey — import or generate first".into())
         })?
+        .0
         .to_bytes();
     finish_tx(
         finder,
@@ -186,7 +186,9 @@ pub(crate) mod tests {
     }
 
     fn device(seed: u8) -> FakeYubiKey {
-        FakeYubiKey::empty().with_key(PAYMENT_SLOT, key(seed))
+        FakeYubiKey::empty()
+            .with_key(PAYMENT_SLOT, key(seed))
+            .with_key(crate::model::STAKE_SLOT, key(seed.wrapping_add(1)))
     }
 
     fn sign_with(seed: u8, tx_cbor: &[u8]) -> Vec<u8> {

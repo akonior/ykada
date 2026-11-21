@@ -34,6 +34,9 @@ jobs:
       - name: Run unit tests (lib + bins)
         run: cargo test --lib --bins --locked --verbose
 
+      - name: Run script tests (integration test reset guard)
+        run: python3 -m unittest discover -s scripts -v
+
       - name: Rust format check
         run: cargo fmt --check
 
