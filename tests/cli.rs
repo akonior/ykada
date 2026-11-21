@@ -268,6 +268,28 @@ fn decode_tx_spells_out_tokens_and_a_treasury_donation() {
     );
 }
 
+// 465 inputs: over the 16 KiB a node accepts once signed. Refused before the device is used.
+#[test]
+fn sign_tx_refuses_a_transaction_too_large_to_submit() {
+    use pallas_addresses::Address;
+    use pallas_crypto::hash::Hash;
+    use pallas_txbuilder::{BuildConway, Input, Output, StagingTransaction};
+    let tx = (0..465u64)
+        .fold(StagingTransaction::new(), |tx, n| {
+            tx.input(Input::new(Hash::new([1; 32]), n))
+        })
+        .output(Output::new(
+            Address::from_bech32(TESTNET_ADDRESS).unwrap(),
+            2_000_000,
+        ))
+        .fee(1_000_000)
+        .build_conway_raw()
+        .unwrap();
+    let output = ykada(&["sign-tx"], hex::encode(tx.tx_bytes.0).as_bytes());
+    assert_refused(&output, 1, "more than the 16384 bytes a node accepts");
+    assert!(!stderr(&output).contains("YubiKey"), "{}", stderr(&output));
+}
+
 // The testnet fixture is refused for mainnet before any device is used.
 #[test]
 fn sign_tx_refuses_a_transaction_for_another_network() {

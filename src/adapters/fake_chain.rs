@@ -24,11 +24,15 @@ impl FakeChain {
 
 impl UtxoFetcher for FakeChain {
     fn fetch_utxos(&self, _address: &str) -> YkadaResult<Vec<Utxo>> {
-        Ok((1u8..)
-            .zip(&self.utxos)
-            .map(|(id, &lovelace)| Utxo {
-                tx_hash: hex::encode([id; 32]),
-                tx_index: 0,
+        // UTxO n (from 0) is output n / 250 of the transaction [n % 250 + 1; 32], so up to 250
+        // UTxOs all have index 0 and a hash that starts with their number counting from 1.
+        Ok(self
+            .utxos
+            .iter()
+            .enumerate()
+            .map(|(n, &lovelace)| Utxo {
+                tx_hash: hex::encode([(n % 250) as u8 + 1; 32]),
+                tx_index: (n / 250) as u64,
                 lovelace,
                 has_tokens: false,
             })

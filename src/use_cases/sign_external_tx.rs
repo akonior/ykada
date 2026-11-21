@@ -112,6 +112,9 @@ pub(super) fn sign_tx<S: Signer>(
     attach_witness(tx_cbor, &ours)
 }
 
+// The largest transaction a node accepts (protocol parameter maxTxSize, the same on every network).
+pub(crate) const MAX_TX_SIZE: u64 = 16_384;
+
 // The size the transaction will have once the YubiKey's witness is added, for the fee check.
 pub(crate) fn signed_size(unsigned: &[u8]) -> YkadaResult<usize> {
     let placeholder = conway::VKeyWitness {
@@ -192,6 +195,18 @@ fn check_network(tx: &conway::Tx<'_>, network: Network) -> YkadaResult<()> {
     }
 }
 
+// Refused before the PIN: with ykada's witness added, a node would reject it as too large.
+fn check_size(cbor: &[u8]) -> YkadaResult<()> {
+    let size = signed_size(cbor)? as u64;
+    match size > MAX_TX_SIZE {
+        true => Err(YkadaError::Tx(format!(
+            "with ykada's signature the transaction would be {size} bytes, more than the \
+             {MAX_TX_SIZE} bytes a node accepts; the tool that built it must make it smaller"
+        ))),
+        false => Ok(()),
+    }
+}
+
 // A signature that does not verify means the transaction changed after that signer signed it,
 // and a node rejects it. ykada's own earlier signature is replaced, so it may be stale.
 fn check_other_signatures(tx: &conway::Tx<'_>, ours: &[u8; 32]) -> YkadaResult<()> {
@@ -225,6 +240,7 @@ pub(crate) fn prepare_external_tx_use_case<F: DeviceFinder>(
 ) -> YkadaResult<(PreparedTx, TxSummary)> {
     let cbor = parse_tx_input(content)?;
     check_network(&decode_tx(&cbor)?, network)?;
+    check_size(&cbor)?;
     let summary = summarize_cbor(&cbor)?;
     let (payment_vk, _) = wallet_keys(&mut finder.find_first()?)?.ok_or_else(|| {
         YkadaError::WalletState("no wallet on YubiKey — import or generate first".into())
@@ -602,6 +618,15 @@ pub(crate) mod tests {
             msg.contains("for Mainnet, but --network is Preview"),
             "got: {msg}"
         );
+    }
+
+    #[test]
+    fn test_a_transaction_too_large_to_sign_is_refused() {
+        let large = (0..465u64).fold(paying(Address::from_bech32(RECIPIENT).unwrap()), |tx, n| {
+            tx.input(Input::new(Hash::new([1; 32]), n))
+        });
+        let msg = prepare_error(large, Network::Preview);
+        assert!(msg.contains("more than the 16384 bytes"), "got: {msg}");
     }
 
     // ykada's own stale signature is replaced when it signs again, so it is no reason to stop.

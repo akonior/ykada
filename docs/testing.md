@@ -26,8 +26,8 @@ does. None of it needs a YubiKey or the network.
 - A recipient is accepted only when it is exactly its own address's encoding: the right prefix,
   no extra bytes, the selected network.
 - A built transaction balances: its inputs pay exactly the outputs plus the fee, every output
-  holds at least 1 ADA, the payment is the amount asked for, and the fee covers the signed size
-  and stays at most 1 ADA.
+  holds at least 1 ADA, the payment is the amount asked for, the fee covers the signed size
+  and stays at most 1 ADA, and the signed transaction fits in the 16 KiB a node accepts.
 - Signing keeps the body bytes, adds a witness that verifies, matches the size the fee check
   predicted, and signing again changes nothing.
 - Attaching a witness keeps every other witness field byte for byte.
@@ -62,12 +62,15 @@ holding only a test wallet. Each line is a class of problem found before; the li
 cover what can be automated.
 
 - **Amounts:** zero, negative, fractions with `--ada`, `u64` overflow, above the balance, below
-  1 ADA, leaving change under 1 ADA, many small UTxOs (the fee check).
+  1 ADA, leaving change under 1 ADA with and without another UTxO to add, many small UTxOs
+  (the fee and size checks).
 - **Addresses:** wrong checksum, wrong network, other prefixes, extra bytes, stake, Byron and
   script addresses, upper case, invisible characters.
 - **Transaction input:** empty, binary, huge, a directory, JSON with the wrong shape, hex with
-  line breaks, trailing bytes, other networks, unknown or repeated body fields, Plutus and
-  multi-signature transactions built by other tools.
+  line breaks, trailing bytes, other networks (outputs and collateral return), unknown or
+  repeated body fields, over 16 KiB once signed, Plutus and multi-signature transactions built
+  by other tools, a cosigner's signature made before the transaction changed. The summary must
+  show every token, minted asset, the collateral return's address and a treasury donation.
 - **Device:** no YubiKey, two YubiKeys, the YubiKey held by gpg (`gpg --card-status`), a wrong
   PIN (one attempt, then the correct PIN), no touch, a slot with a key from another tool, a
   swapped public-key object.

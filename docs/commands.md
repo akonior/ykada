@@ -80,8 +80,11 @@ submitted" means the transaction did not reach a node. The same holds when `sign
 How the transaction is built:
 
 - It spends only UTxOs that hold ADA alone, largest first, and leaves tokens untouched.
-- The change goes back to your address. The payment and the change must each be at least 1 ADA.
+- The change goes back to your address. The payment and the change must each be at least 1 ADA;
+  when the change would be less, ykada adds the next UTxO, and refuses only when none is left.
 - The transaction is valid for 7200 slots, about 2 hours.
+- A node accepts at most 16 KiB (16,384 bytes) per transaction. A payment that would need so
+  many small UTxOs that it gets larger is refused before signing: send a smaller amount.
 
 To check a payment before you send it:
 
@@ -119,7 +122,8 @@ keep their exact bytes, so the transaction ID, any other signatures and a fee co
 size stay valid. Signing again replaces ykada's earlier signature. A transaction that already
 carries another signer's signature that does not verify was changed after they signed it, and no
 node would accept it: ykada refuses it before the PIN. A transaction for another network than
-`--network`, by its outputs, its collateral return or its network ID, is refused. A mainnet
+`--network`, by its outputs, its collateral return or its network ID, is refused, and so is one
+that would be larger than the 16 KiB a node accepts once ykada's signature is added. A mainnet
 `--send` asks you to type `yes`, so it needs `--tx-file` rather than stdin.
 
 ## decode-tx

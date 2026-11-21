@@ -6,7 +6,7 @@ use crate::error::{YkadaError, YkadaResult};
 use crate::logic::select_inputs;
 use crate::model::Utxo;
 use crate::ports::{TipFetcher, UtxoFetcher};
-use crate::use_cases::sign_external_tx::signed_size;
+use crate::use_cases::sign_external_tx::{signed_size, MAX_TX_SIZE};
 
 pub(crate) struct TransactionParams {
     pub recipient: Address,
@@ -30,7 +30,7 @@ where
     let built = build_staged(&utxos, tip_slot, &params)?
         .build_conway_raw()
         .map_err(|e| YkadaError::Tx(format!("tx build error: {e}")))?;
-    check_fee_covers_size(&built.tx_bytes.0, params.fee_lovelace)?;
+    check_size_and_fee(&built.tx_bytes.0, params.fee_lovelace)?;
     Ok(built.tx_bytes.0)
 }
 
@@ -57,16 +57,21 @@ const MIN_FEE_B: u64 = 155_381;
 
 // The largest transaction the ledger accepts (16 KiB) needs 0.88 ADA, so a higher --fee is a typo.
 const MAX_FEE_LOVELACE: u64 = 1_000_000;
-const MAX_TX_SIZE: u64 = 16_384;
 const _: () = assert!(MIN_FEE_A * MAX_TX_SIZE + MIN_FEE_B <= MAX_FEE_LOVELACE);
 
-// Catch a fee the node would reject (FeeTooSmallUTxO) before the YubiKey signs.
-fn check_fee_covers_size(unsigned: &[u8], fee_lovelace: u64) -> YkadaResult<()> {
-    let size = signed_size(unsigned)?;
-    let needed = MIN_FEE_A * size as u64 + MIN_FEE_B;
-    match fee_lovelace >= needed {
-        true => Ok(()),
-        false => Err(YkadaError::Tx(format!(
+// Catch what a node would reject before the YubiKey signs: a transaction over the size limit
+// (MaxTxSizeUTxO), or a fee too small for its size (FeeTooSmallUTxO).
+fn check_size_and_fee(unsigned: &[u8], fee_lovelace: u64) -> YkadaResult<()> {
+    let size = signed_size(unsigned)? as u64;
+    let needed = MIN_FEE_A * size + MIN_FEE_B;
+    match (size > MAX_TX_SIZE, fee_lovelace >= needed) {
+        (true, _) => Err(YkadaError::Tx(format!(
+            "the signed transaction would be {size} bytes, more than the {MAX_TX_SIZE} bytes a \
+             node accepts, because it spends many small UTxOs; send a smaller amount, which \
+             needs fewer of them"
+        ))),
+        (false, true) => Ok(()),
+        (false, false) => Err(YkadaError::Tx(format!(
             "the fee {fee_lovelace} lovelace is below the {needed} lovelace this {size}-byte \
              transaction needs; pass --fee {}",
             needed.div_ceil(1000) * 1000
@@ -91,7 +96,7 @@ fn build_staged(
         .send_lovelace
         .checked_add(params.fee_lovelace)
         .ok_or_else(|| YkadaError::Tx("send amount + fee overflows u64".into()))?;
-    let (selected_indices, total_input) = select_inputs(utxos, required)?;
+    let (selected_indices, total_input) = select_inputs(utxos, required, MIN_UTXO_LOVELACE)?;
     // select_inputs guarantees total_input >= required.
     let change_lovelace = total_input - required;
 
@@ -186,6 +191,50 @@ mod tests {
     fn test_zero_change_omits_change_output() {
         let cbor = build(&[2_200_000], 2_000_000).unwrap();
         assert_eq!(body(&cbor).outputs.len(), 1);
+    }
+
+    // 465 inputs make a 17,583-byte signed payment: the fee would cover it, the node would not.
+    #[test]
+    fn oversized_signed_payment_is_refused_even_when_the_fee_covers_it() {
+        let tx = (0..465u64)
+            .fold(StagingTransaction::new(), |tx, index| {
+                tx.input(Input::new(Hash::new([1; 32]), index))
+            })
+            .output(Output::new(
+                Address::from_bech32(RECIPIENT).unwrap(),
+                2_000_000,
+            ))
+            .fee(MAX_FEE_LOVELACE)
+            .build_conway_raw()
+            .unwrap();
+        let unsigned = &tx.tx_bytes.0;
+        let size = signed_size(unsigned).unwrap() as u64;
+        assert!(size > MAX_TX_SIZE);
+        assert!(size * MIN_FEE_A + MIN_FEE_B <= MAX_FEE_LOVELACE);
+        let msg = check_size_and_fee(unsigned, MAX_FEE_LOVELACE)
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("more than the 16384 bytes"), "got: {msg}");
+    }
+
+    // The same through send: 500 UTxOs of 1.1 ADA pay exactly 549 ADA and a 1 ADA fee.
+    #[test]
+    fn a_payment_from_too_many_utxos_is_refused_before_signing() {
+        let msg = build_with(&[1_100_000; 600], 549_000_000, MAX_FEE_LOVELACE)
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("send a smaller amount"), "got: {msg}");
+    }
+
+    #[test]
+    fn another_spendable_input_can_cover_dust_change() {
+        let cbor = build(&[5_000_000, 2_000_000], 4_300_000)
+            .expect("both inputs pay 4.3 ADA plus the fee and leave 2.5 ADA in change");
+        let summary = crate::use_cases::decode_tx::summarize_cbor(&cbor).unwrap();
+        assert_eq!(summary.inputs.len(), 2);
+        assert_eq!(summary.fee, 200_000);
+        assert_eq!(summary.outputs[0].lovelace, 4_300_000);
+        assert_eq!(summary.outputs[1].lovelace, 2_500_000);
     }
 
     #[test]
@@ -314,6 +363,7 @@ mod tests {
             prop_assert!(outputs.iter().all(|&lovelace| lovelace >= MIN_UTXO_LOVELACE));
             let size = signed_size(&cbor).unwrap() as u64;
             prop_assert!(fee >= MIN_FEE_A * size + MIN_FEE_B && fee <= MAX_FEE_LOVELACE);
+            prop_assert!(size <= MAX_TX_SIZE);
         }
     }
 }
