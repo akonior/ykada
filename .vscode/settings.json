@@ -1,8 +1,0 @@
-{
-  "cSpell.words": [
-    "cardano",
-    "ykada",
-    "yubikey"
-  ],
-  "rust-analyzer.cargo.features": ["hardware-tests"]
-}
