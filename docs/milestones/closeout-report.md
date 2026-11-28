@@ -39,19 +39,14 @@ ykada addresses it:
 ## List of project KPIs and how the project addressed them
 
 Each milestone's acceptance criteria were the project's KPIs. Milestones 1 and 2 are
-approved. Milestone 3 is submitted together with this report. The work took longer than the
-three months planned in the proposal: milestone 3, planned for February 2026, was delivered in
-November 2026.
+approved. Milestone 3 was delivered in November 2026, within the extension to 1 December 2026
+agreed with Project Catalyst, and is submitted together with this report.
 
 | Milestone | KPI (acceptance criteria) | Result |
 |---|---|---|
 | 1. Technical documentation & PoC | Report on YubiKey PIV Ed25519, PIN and touch policy, and OpenPGP feasibility; PoC signs raw bytes, verified by an independent verifier | Met, approved January 2026 — [milestone1.md](./milestone1.md) |
 | 2. CLI implementation | CLI generates and imports Ed25519 keys on a YubiKey; PIN and touch policy configured and verified; tests run on every pull request; README with setup and usage | Met, approved February 2026 — [demo video](https://www.youtube.com/watch?v=dTatJ1U6Tv4) |
 | 3. Cardano transaction signing | CLI hashes (Blake2b-256) and signs transactions on the device and returns a broadcastable transaction; examples on preview, preprod and mainnet; unit tests in CI; documentation and tutorial | Submitted with this report — [milestone3.md](./milestone3.md), with the on-chain transactions under [Evidence](./milestone3.md#evidence) |
-
-One deliberate change: raw private-key import, delivered in milestone 2, was removed in the
-v0.4.0. Every wallet is now created from a BIP39 mnemonic, so it can always be
-recovered from that mnemonic.
 
 ## Key achievements (in particular around collaboration and engagement)
 
