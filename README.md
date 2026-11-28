@@ -11,13 +11,15 @@ transaction is signed on the device after your PIN and a touch.
 
 ## Install
 
-You need a YubiKey 5 with firmware 5.7 or later, and `pinentry` (`brew install pinentry`).
+You need a YubiKey 5 with firmware 5.7 or later, and `pinentry`: on macOS `brew install pinentry`,
+on Debian or Ubuntu `sudo apt-get install pinentry-curses pcscd` (pcscd is the smart-card service).
 
 ```sh
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/akonior/ykada/releases/latest/download/ykada-installer.sh | sh
 ```
 
-This installs the macOS binary. On other systems, [build from source](docs/development.md).
+This installs the binary for macOS or Linux (x86-64 or ARM64). On other systems,
+[build from source](docs/development.md).
 
 ## Receive and send ADA
 

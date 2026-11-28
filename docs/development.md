@@ -59,5 +59,5 @@ only that one YubiKey.
 ## Releases
 
 Pushing a tag `vX.Y.Z` that matches `version` in `Cargo.toml` starts the release workflow. It
-builds the macOS binaries and the shell installer and publishes them on the
+builds the macOS and Linux binaries and the shell installer and publishes them on the
 [Releases](https://github.com/akonior/ykada/releases) page.
