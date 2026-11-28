@@ -89,9 +89,6 @@ releases and videos; growing the user base is part of the next steps.
 - The YubiKey's OpenPGP applet as a second signing backend.
 - Linux and Windows builds.
 
-I plan to seek follow-up funding in a future Catalyst round to cover the security review and
-token support.
-
 ## Final thoughts/comments
 
 Many developers already carry a YubiKey. This project turns it into a Cardano hardware wallet
